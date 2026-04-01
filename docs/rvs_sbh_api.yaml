@@ -1,0 +1,646 @@
+openapi: 3.0.3
+info:
+  title: Smart Beerhouse API
+  description: |
+    Private API for managing Smart Beerhouse devices.
+    The ESP32 device is the client — it POSTs state and history, and GETs config from the server.
+    All endpoints require the device UID as a query parameter (`uuid`).
+    All timestamps are Unix epoch in milliseconds in UTC.
+    All enum fields are serialized as integers (uint8).
+    Config endpoints are download-only: the device fetches the authoritative config from the server.
+    Channel-specific endpoints identify the channel via the `channel` query parameter (0–3).
+  version: 0.0.1
+
+tags:
+  - name: State
+    description: Device and channel state reporting
+  - name: TimeConfig
+    description: Time and timezone configuration
+  - name: DeviceConfig
+    description: Device ownership and organization configuration
+  - name: ConnectionConfig
+    description: Network connection configuration (Ethernet, WiFi, LTE)
+  - name: ChannelConfig
+    description: Per-channel sensor and beer configuration
+  - name: ChannelHistory
+    description: Channel event history reporting
+
+# ─── Shared Parameters ──────────────────────────────────────────────────────
+
+components:
+  parameters:
+    Uuid:
+      name: uuid
+      in: query
+      required: true
+      schema:
+        type: string
+        maxLength: 16
+      description: Unique device identifier (UID)
+
+    Channel:
+      name: channel
+      in: query
+      required: true
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 3
+      description: Channel index (0–3)
+
+  schemas:
+
+    # ─── Enumerations ──────────────────────────────────────────────────────
+
+    Status:
+      type: integer
+      format: uint8
+      enum: [0, 1, 2, 3]
+      description: "0=UNKNOWN, 1=OK, 2=WARNING, 3=ERROR"
+
+    ConnectionStatus:
+      type: integer
+      format: uint8
+      enum: [0, 1, 2, 3]
+      description: "0=UNKNOWN, 1=DISCONNECTED, 2=CONNECTING, 3=CONNECTED"
+
+    ChannelStatus:
+      type: integer
+      format: uint8
+      enum: [0, 1]
+      description: "0=UNKNOWN, 1=TBD"
+
+    FlowSensorType:
+      type: integer
+      format: uint8
+      enum: [0, 1, 2]
+      description: "0=UNKNOWN, 1=MODBUS, 2=PULSE"
+
+    TemperatureSensorType:
+      type: integer
+      format: uint8
+      enum: [0, 1, 2, 3]
+      description: "0=UNKNOWN, 1=MODBUS, 2=ANALOG, 3=ONE_WIRE"
+
+    PressureSensorType:
+      type: integer
+      format: uint8
+      enum: [0, 1]
+      description: "0=UNKNOWN, 1=ANALOG"
+
+    EventType:
+      type: integer
+      format: uint8
+      enum: [0, 1, 2, 3]
+      description: "0=UNKNOWN, 1=BEER, 2=CLEANING, 3=UNRECOGNIZED"
+
+    # ─── State ─────────────────────────────────────────────────────────────
+
+    StateRequest:
+      type: object
+      description: |
+        Sent by the device. Inherits `timestamp` and `status` from the Runtime base.
+      properties:
+        timestamp:
+          type: integer
+          format: uint64
+          description: Request timestamp (Unix epoch, ms)
+        status:
+          $ref: '#/components/schemas/Status'
+          description: General device status (from Runtime base)
+        runtime:
+          type: integer
+          format: uint64
+          description: Device uptime in ms
+        connectionState:
+          $ref: '#/components/schemas/ConnectionState'
+        channelsState:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChannelState'
+          maxItems: 4
+          description: State for all 4 channels
+
+    StateResponse:
+      type: object
+      description: Returned to the device — contains current config timestamps per subsystem.
+      properties:
+        timestamp:
+          type: integer
+          format: uint64
+        timeConfigTimestamp:
+          type: integer
+          format: uint64
+        deviceConfigTimestamp:
+          type: integer
+          format: uint64
+        connectionConfigTimestamp:
+          type: integer
+          format: uint64
+        channelConfigTimestamps:
+          type: array
+          items:
+            type: integer
+            format: uint64
+          maxItems: 4
+          description: Per-channel config timestamps (index = channel number)
+
+    ConnectionState:
+      type: object
+      properties:
+        timestamp:
+          type: integer
+          format: uint64
+          description: Timestamp of this connection state snapshot (Unix epoch, ms)
+        ethStatus:
+          $ref: '#/components/schemas/ConnectionStatus'
+        wifiStatus:
+          $ref: '#/components/schemas/ConnectionStatus'
+        lteStatus:
+          $ref: '#/components/schemas/ConnectionStatus'
+
+    ChannelState:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/ChannelStatus'
+        tankLevel:
+          type: integer
+          format: uint64
+          description: Current tank level
+        temperature:
+          type: integer
+          format: uint64
+          description: Current temperature
+        pressure:
+          type: integer
+          format: uint64
+          description: Current pressure
+        conductivity:
+          type: integer
+          format: uint64
+          description: Current conductivity
+        unrecognized:
+          $ref: '#/components/schemas/Unrecognized'
+        sizeTypeState:
+          type: array
+          items:
+            $ref: '#/components/schemas/BeerSizeTypeState'
+          maxItems: 8
+          description: Pour counts per beer size type
+
+    Unrecognized:
+      type: object
+      description: Aggregated info about unrecognized pouring events
+      properties:
+        count:
+          type: integer
+          format: uint32
+          description: Number of unrecognized pour events
+        volume:
+          type: integer
+          format: uint32
+          description: Total unrecognized volume (ml)
+
+    BeerSizeTypeState:
+      type: object
+      properties:
+        count:
+          type: integer
+          format: uint32
+          description: Number of regular size pours on this tank
+        volume:
+          type: integer
+          format: uint32
+          description: Complete volume classified to this size (ml)
+        quality:
+          type: integer
+          format: uint32
+          description: Average quality of dosing on this tank
+        underLimitCount:
+          type: integer
+          format: uint32
+          description: Count of under-limit pours for this size
+        overLimitCount:
+          type: integer
+          format: uint32
+          description: Count of over-limit pours for this size
+
+    # ─── Time Config ────────────────────────────────────────────────────────
+
+    TimeConfig:
+      type: object
+      description: Server-authoritative time configuration returned to the device.
+      properties:
+        timestamp:
+          type: integer
+          format: uint64
+          description: Timestamp of last config change
+        timezone:
+          type: string
+          maxLength: 64
+          description: POSIX timezone string (e.g. "CET-1CEST,M3.5.0,M10.5.0/3")
+        timezoneName:
+          type: string
+          maxLength: 64
+          description: Timezone name (e.g. "Europe/Prague")
+
+    # ─── Device Config ───────────────────────────────────────────────────────
+
+    DeviceConfig:
+      type: object
+      description: Server-authoritative device configuration returned to the device.
+      properties:
+        timestamp:
+          type: integer
+          format: uint64
+          description: Timestamp of last config change
+        ownerId:
+          type: string
+          maxLength: 32
+          description: Identification of device owner
+        organizationId:
+          type: string
+          maxLength: 32
+          description: Identification of restaurant/organization
+
+    # ─── Connection Config ───────────────────────────────────────────────────
+
+    ConnectionConfig:
+      type: object
+      description: Server-authoritative connection configuration returned to the device.
+      properties:
+        timestamp:
+          type: integer
+          format: uint64
+        ethernetConfig:
+          $ref: '#/components/schemas/EthernetConfig'
+        wifiConfig:
+          $ref: '#/components/schemas/WifiConfig'
+        lteConfig:
+          $ref: '#/components/schemas/LteConfig'
+
+    EthernetConfig:
+      type: object
+      properties:
+        useDhcp:
+          type: boolean
+        ip:
+          type: string
+          maxLength: 15
+        netmask:
+          type: string
+          maxLength: 15
+        gateway:
+          type: string
+          maxLength: 15
+
+    WifiConfig:
+      type: object
+      properties:
+        ssid:
+          type: string
+          maxLength: 32
+        password:
+          type: string
+          maxLength: 64
+
+    LteConfig:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+
+    # ─── Channel Config ──────────────────────────────────────────────────────
+
+    ChannelConfig:
+      type: object
+      description: Server-authoritative channel configuration returned to the device.
+      properties:
+        timestamp:
+          type: integer
+          format: uint64
+          description: Timestamp of last config change
+        portConfigId:
+          type: string
+          maxLength: 32
+          description: Unique identifier of TAP port configuration
+        enabled:
+          type: boolean
+          description: Whether this channel is active
+        flowType:
+          $ref: '#/components/schemas/FlowSensorType'
+        flowConfig:
+          $ref: '#/components/schemas/SensorConfig'
+        temperatureType:
+          $ref: '#/components/schemas/TemperatureSensorType'
+        temperatureConfig:
+          $ref: '#/components/schemas/SensorConfig'
+        pressureType:
+          $ref: '#/components/schemas/PressureSensorType'
+        pressureConfig:
+          $ref: '#/components/schemas/SensorConfig'
+        beerTypeId:
+          type: integer
+          format: uint16
+          description: Unique identifier of the beer type
+        beerSizes:
+          type: array
+          items:
+            $ref: '#/components/schemas/BeerSizeConfig'
+          maxItems: 8
+          description: Configured beer sizes for this channel
+        tapTimeoutMs:
+          type: integer
+          format: uint32
+          description: Dosing timeout to end a beer pour (ms)
+        tankCapacity:
+          type: integer
+          format: uint32
+          description: Tank volume in milliliters
+        cleaningVolumeThr:
+          type: integer
+          format: uint32
+          description: Volume threshold for detecting a cleaning cycle (ml)
+
+    BeerSizeConfig:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 32
+          description: Name of the size
+        minVolume:
+          type: integer
+          format: uint32
+          description: Minimal volume in milliliters
+        typVolume:
+          type: integer
+          format: uint32
+          description: Typical volume in milliliters
+        maxVolume:
+          type: integer
+          format: uint32
+          description: Maximal volume in milliliters
+
+    SensorConfig:
+      type: object
+      properties:
+        timestamp:
+          type: integer
+          format: uint64
+          description: Timestamp of last sensor config change
+        enabled:
+          type: boolean
+        id:
+          type: integer
+          format: uint64
+          description: Sensor hardware ID
+
+    # ─── Channel History ─────────────────────────────────────────────────────
+
+    ChannelEvent:
+      type: object
+      description: A single dispensing or cleaning event recorded on a channel.
+      properties:
+        seqNumber:
+          type: integer
+          format: uint64
+          description: Sequence number
+        synced:
+          type: boolean
+          description: Whether this event has been acknowledged by the server
+        startTimestamp:
+          type: integer
+          format: uint64
+          description: Start of event (Unix epoch, ms)
+        endTimestamp:
+          type: integer
+          format: uint64
+          description: End of event (Unix epoch, ms)
+        eventType:
+          $ref: '#/components/schemas/EventType'
+        beerSizeType:
+          type: integer
+          format: uint8
+          description: ID of the identified beer size (matches BeerSizeTypeConfig index)
+        volume:
+          type: integer
+          format: uint32
+          description: Total event volume (ml)
+        tempHistory:
+          type: array
+          items:
+            type: integer
+            format: uint16
+          maxItems: 100
+          description: Temperature profile sampled during the event
+        flowHistory:
+          type: array
+          items:
+            type: integer
+            format: uint16
+          maxItems: 100
+          description: Flow profile sampled during the event
+        pressureHistory:
+          type: array
+          items:
+            type: integer
+            format: uint16
+          maxItems: 100
+          description: Pressure profile sampled during the event
+        conductivityHistory:
+          type: array
+          items:
+            type: integer
+            format: uint16
+          maxItems: 100
+          description: Conductivity profile sampled during the event
+
+    ChannelHistoryRequest:
+      type: object
+      description: One event report for a single channel. One event per request due to payload size.
+      properties:
+        event:
+          $ref: '#/components/schemas/ChannelEvent'
+
+# ─── Paths ──────────────────────────────────────────────────────────────────
+
+paths:
+  /state:
+    post:
+      tags: [State]
+      summary: Post device state
+      description: Device POSTs its current state. Server responds with config timestamps so the device knows what to fetch.
+      parameters:
+        - $ref: '#/components/parameters/Uuid'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StateRequest'
+            example:
+              timestamp: 1743379200000
+              status: 1
+              runtime: 3600000
+              connectionState:
+                timestamp: 1743379200000
+                ethStatus: 3
+                wifiStatus: 1
+                lteStatus: 0
+              channelsState:
+                - status: 1
+                  tankLevel: 30000
+                  temperature: 4200
+                  pressure: 1013
+                  conductivity: 512
+                  unrecognized:
+                    count: 2
+                    volume: 350
+                  sizeTypeState:
+                    - count: 14
+                      volume: 4900
+                      quality: 95
+                      underLimitCount: 1
+                      overLimitCount: 0
+                    - count: 6
+                      volume: 3000
+                      quality: 92
+                      underLimitCount: 0
+                      overLimitCount: 1
+                - status: 1
+                  tankLevel: 15000
+                  temperature: 3800
+                  pressure: 1010
+                  conductivity: 480
+                  unrecognized:
+                    count: 0
+                    volume: 0
+                  sizeTypeState:
+                    - count: 9
+                      volume: 3150
+                      quality: 97
+                      underLimitCount: 0
+                      overLimitCount: 0
+                    - count: 3
+                      volume: 1500
+                      quality: 90
+                      underLimitCount: 0
+                      overLimitCount: 0
+                - status: 0
+                  tankLevel: 0
+                  temperature: 0
+                  pressure: 0
+                  conductivity: 0
+                  unrecognized:
+                    count: 0
+                    volume: 0
+                  sizeTypeState: []
+                - status: 0
+                  tankLevel: 0
+                  temperature: 0
+                  pressure: 0
+                  conductivity: 0
+                  unrecognized:
+                    count: 0
+                    volume: 0
+                  sizeTypeState: []
+      responses:
+        '200':
+          description: Config timestamps for all subsystems
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StateResponse'
+              example:
+                timestamp: 1743379200000
+                timeConfigTimestamp: 1743000000000
+                deviceConfigTimestamp: 1742500000000
+                connectionConfigTimestamp: 1742000000000
+                channelConfigTimestamps:
+                  - 1741000000000
+                  - 1741000000000
+                  - 0
+                  - 0
+
+  /timeConfig:
+    get:
+      tags: [TimeConfig]
+      summary: Get time configuration
+      description: Device fetches the server-authoritative time configuration.
+      parameters:
+        - $ref: '#/components/parameters/Uuid'
+      responses:
+        '200':
+          description: Time configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeConfig'
+
+  /deviceConfig:
+    get:
+      tags: [DeviceConfig]
+      summary: Get device configuration
+      description: Device fetches the server-authoritative device configuration.
+      parameters:
+        - $ref: '#/components/parameters/Uuid'
+      responses:
+        '200':
+          description: Device configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceConfig'
+
+  /connectionConfig:
+    get:
+      tags: [ConnectionConfig]
+      summary: Get connection configuration
+      description: Device fetches the server-authoritative connection configuration.
+      parameters:
+        - $ref: '#/components/parameters/Uuid'
+      responses:
+        '200':
+          description: Connection configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionConfig'
+
+  /channelConfig:
+    get:
+      tags: [ChannelConfig]
+      summary: Get channel configuration
+      description: Device fetches the server-authoritative configuration for a single channel.
+      parameters:
+        - $ref: '#/components/parameters/Uuid'
+        - $ref: '#/components/parameters/Channel'
+      responses:
+        '200':
+          description: Channel configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelConfig'
+
+  /channelHistory:
+    post:
+      tags: [ChannelHistory]
+      summary: Post channel event
+      description: |
+        Device POSTs a single channel event. One event per request due to payload size (history arrays of 100 samples each).
+        Server responds with 200 on successful ingestion.
+      parameters:
+        - $ref: '#/components/parameters/Uuid'
+        - $ref: '#/components/parameters/Channel'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChannelHistoryRequest'
+      responses:
+        '200':
+          description: Event received successfully

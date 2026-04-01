@@ -1,0 +1,24 @@
+[submodule "main/asn/asn-core"]
+	path = main/asn/asn-core
+	url = ../asn-core
+[submodule "main/asn/asn-esp32-hal"]
+	path = main/asn/asn-esp32-hal
+	url = ../asn-esp32-hal
+[submodule "main/asn/asn-expander-lib"]
+	path = main/asn/asn-expander-lib
+	url = ../asn-expander-lib
+[submodule "main/asn/asn-drivers"]
+	path = main/asn/asn-drivers
+	url = ../asn-drivers
+[submodule "main/asn/asn-esp32-modbus"]
+	path = main/asn/asn-esp32-modbus
+	url = ../asn-esp32-modbus
+[submodule "main/asn/asn-esp32-ble"]
+	path = main/asn/asn-esp32-ble
+	url = ../asn-esp32-ble.git
+[submodule "main/asn/asn-esp32-wifi"]
+	path = main/asn/asn-esp32-wifi
+	url = ../asn-esp32-wifi
+[submodule "main/asn/asn-hal"]
+	path = main/asn/asn-hal
+	url = ../asn-hal
