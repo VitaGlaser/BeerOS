@@ -4,7 +4,8 @@
 
 #include "asn/asn-core/logger.hpp"
 #include "asn/asn-core/types.hpp"
-#include "asn/asn-core/utils.hpp"
+
+#include "asn/asn-hal/time_manager/time_manager.hpp"
 
 #include "asn/asn-esp32-modbus/master.hpp"
 
@@ -15,11 +16,7 @@ namespace AsnPlus::DataSource
     class TemperatureModbus : public Base
     {
     public:
-        TemperatureModbus(Modbus::RtuMaster & modbusMaster ) :
-            Base(),
-            _modbusMaster( modbusMaster )
-        {
-        }
+        TemperatureModbus( Modbus::RtuMaster & modbusMaster ) : Base(), _modbusMaster( modbusMaster ) {}
 
         bool initialize() override
         {
@@ -35,18 +32,22 @@ namespace AsnPlus::DataSource
             mb_param_request_t req   = {
                 .slave_addr = static_cast< uint8_t >( _id ),
                 .command    = static_cast< uint8_t >( Modbus::Commands::READ_INPUT_REGISTERS ),
-                .reg_start  = 0,
+                .reg_start  = 3,
                 .reg_size   = 1
             };
 
             if ( ! _modbusMaster.request( &req, &value ) )
             {
-                Log::error( "Failed to read input registers" );
-                _value = 0;
+                Log::error( "Failed to read input registers (ID: %llu)", _id );
+                _clearSample();
                 return;
             }
 
-            _value = static_cast< uint32_t >( value );
+            uint64_t ts  = TimeManager::instance().getRuntime().utcEpochMs;
+            uint32_t val = static_cast< uint32_t >( value );
+            _writeSample( ts, val );
+
+            Log::debug( "Polled Modbus temperature sensor (ID: %llu): %u (%llu ms)", _id, val, ts );
         }
 
     private:

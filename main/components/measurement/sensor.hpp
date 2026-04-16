@@ -46,15 +46,16 @@ namespace AsnPlus
             _dataSource->poll();
         }
 
-        uint16_t read() const
+        DataSource::Base::Sample read() const
         {
             if ( _dataSource == nullptr )
             {
-                Log::error( "No data source configured for this sensor" );
-                return 0;
+                Log::debug( "No data source configured for this sensor" );
+                return {};
+
             }
 
-            return static_cast< uint16_t >( _dataSource->read() );
+            return _dataSource->read();
         }
 
         void bindDataSource( DataSource::Base & dataSource ) { _dataSource = &dataSource; }
@@ -63,7 +64,7 @@ namespace AsnPlus
 
     private:
         static constexpr const char TAG[] = "Sensor";
-        using Log                         = AsnPlus::Logger< ProgramConfig::DEBUG_ENABLED, TAG >;
+        using Log                         = AsnPlus::Logger< ProjectConfig::LOG_LEVEL_SENSOR, TAG >;
 
         Config &  _config;
 

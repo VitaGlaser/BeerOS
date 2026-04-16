@@ -1,5 +1,6 @@
 #pragma once
 
+#include "asn/asn-core/color.hpp"
 #include "asn/asn-core/timer.hpp"
 #include "asn/asn-core/types.hpp"
 #include "esp_err.h"
@@ -7,26 +8,18 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "led_strip.h"
-#include <stdio.h>
-#include <vector>
-#include "asn/asn-core/timer.hpp"
-#include "asn/asn-core/types.hpp"
-#include "asn/asn-core/color.hpp"
 #include "led_strip_rmt.h"
 #include "led_strip_types.h"
+#include <stdio.h>
+#include <vector>
 
 namespace AsnPlus::Drivers
 {
     class LedStrip
     {
     public:
-
         LedStrip( gpio_num_t controlPin, u8 countOfLeds, bool invertOutput ) :
             _controlPin( controlPin ),
-            _blinkTimer(
-                Delegate< uint32_t() >::create<
-                    []() -> uint32_t { return static_cast< uint32_t >( esp_timer_get_time() / 1000 ); } >()
-            ),
             _countOfLeds( countOfLeds ),
             _ledColors( countOfLeds, Colors::NONE ),
             _ledColorsBrightness( countOfLeds, 255 ),
@@ -150,10 +143,7 @@ namespace AsnPlus::Drivers
             }
         }
 
-        void clear(u8 led_number)
-        {
-            setColor(led_number, Colors::NONE);
-        }
+        void clear( u8 led_number ) { setColor( led_number, Colors::NONE ); }
 
         void clear( u8 start, u8 length, int exception = -1 )
         {
@@ -183,15 +173,15 @@ namespace AsnPlus::Drivers
         {
             for ( u8 i = 0; i < _countOfLeds; i++ )
             {
-                Color color = _ledColors[i];
-                u8 brightness = _ledColorsBrightness[i];
-                u8 red = color.red;
-                u8 green = color.green;
-                u8 blue = color.blue;
+                Color color      = _ledColors[ i ];
+                u8    brightness = _ledColorsBrightness[ i ];
+                u8    red        = color.red;
+                u8    green      = color.green;
+                u8    blue       = color.blue;
 
-                red   = ( red * brightness ) / UINT8_MAX;
-                green = ( green * brightness ) / UINT8_MAX;
-                blue  = ( blue * brightness ) / UINT8_MAX;
+                red              = ( red * brightness ) / UINT8_MAX;
+                green            = ( green * brightness ) / UINT8_MAX;
+                blue             = ( blue * brightness ) / UINT8_MAX;
 
                 led_strip_set_pixel( _led_strip, i, red, green, blue );
             }
@@ -206,7 +196,7 @@ namespace AsnPlus::Drivers
                 .max_leds       = _countOfLeds, // The number of LEDs in the strip,
                 .led_model      = LED_MODEL_WS2812, // LED strip model
                 .flags          = {
-                                   .invert_out = _invertOutput,    // whether to invert the output signal
+                                   .invert_out = _invertOutput,       // whether to invert the output signal
                 },
             };
 
@@ -214,21 +204,22 @@ namespace AsnPlus::Drivers
             //     .clk_src = SPI_CLK_SRC_DEFAULT, // different clock source can lead to different power consumption
             //     .spi_bus = SPI2_HOST, // SPI bus ID
             //     .flags   = {
-            //                 .with_dma = true,            // Using DMA can improve performance and help drive more LEDs
+            //                 .with_dma = true,            // Using DMA can improve performance and help drive more
+            //                 LEDs
             //     },
             // };
 
             // led_strip_new_spi_device( &strip_config, &spi_config, &_led_strip );
 
             led_strip_rmt_config_t rmt_config = {
-                .clk_src = RMT_CLK_SRC_DEFAULT,        // different clock source can lead to different power consumption
-                .resolution_hz = 10 * 1000 * 1000, // RMT counter clock frequency
+                .clk_src = RMT_CLK_SRC_DEFAULT, // different clock source can lead to different power consumption
+                .resolution_hz     = 10 * 1000 * 1000, // RMT counter clock frequency
                 .mem_block_symbols = 0, // the memory block size used by the RMT channel
-                .flags = {
-                    .with_dma = true,     // Using DMA can improve performance when driving more LEDs
+                .flags             = {
+                                      .with_dma = true,                     // Using DMA can improve performance when driving more LEDs
                 }
             };
-            led_strip_new_rmt_device(&strip_config, &rmt_config, &_led_strip);
+            led_strip_new_rmt_device( &strip_config, &rmt_config, &_led_strip );
             return _led_strip;
         }
 
@@ -236,7 +227,7 @@ namespace AsnPlus::Drivers
         led_strip_handle_t   _led_strip;
         bool                 _led_on_off    = false;
         Color                _current_color = Colors::NONE;
-        Timer                _blinkTimer;
+        Timer<>              _blinkTimer {};
         u8                   _countOfLeds;
         std::vector< Color > _ledColors;
         std::vector< u8 >    _ledColorsBrightness;

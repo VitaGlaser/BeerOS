@@ -13,15 +13,15 @@
 
 #include "asn/asn-hal/common/common_structs.hpp"
 
-#include "components/cloud/json_conversion/connection_config.hpp"
+#include "components/cloud/json_conversion/network_config.hpp"
 
 namespace AsnPlus::Cloud
 {
-    class ConnectionConfigRequest : public Esp32::Https::IFirestoreRequest
+    class NetworkConfigRequest : public Esp32::Https::IFirestoreRequest
     {
     public:
-        ConnectionConfigRequest(
-            ConnectionConfig &                        response,
+        NetworkConfigRequest(
+            NetworkConfig &                           response,
             Esp32::Https::IFirestoreRequest::Config & config,
             IVector< uint8_t > &                      responseBuffer,
             Delegate< void() >                        onUpdate
@@ -88,12 +88,12 @@ namespace AsnPlus::Cloud
         }
 
     private:
-        static constexpr const char TAG[] = "ConnectionConfigRequest";
+        static constexpr const char TAG[] = "NetworkConfigRequest";
         using Log                         = Logger< ProjectConfig::LOG_LEVEL_CLOUD_REQUESTS, TAG >;
 
         Esp32::Https::IFirestoreRequest::Config & _config;
 
-        ConnectionConfig &   _response;
+        NetworkConfig &      _response;
         IVector< uint8_t > & _responseBuffer;
 
         Delegate< void() > _onUpdate;

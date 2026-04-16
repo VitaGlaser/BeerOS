@@ -4,7 +4,7 @@
 
 namespace AsnPlus::Connection
 {
-    enum class Value: uint8_t
+    enum class State: uint8_t
     {
         UNKNOWN, 
         DISCONNECTED,
@@ -24,15 +24,14 @@ namespace AsnPlus::Connection
 
     struct Runtime
     {
-        Value btValue = Value::DISCONNECTED;
+        State ethValue = State::DISCONNECTED;
+        State btValue = State::DISCONNECTED;
         uint16_t btRssi = 0;
-        Value ethValue = Value::DISCONNECTED;
-        uint16_t ethRssi = 0;
-        Value wifiValue = Value::DISCONNECTED;
+        State wifiValue = State::DISCONNECTED;
         uint16_t wifiRssi = 0;
-        Value lteValue = Value::DISCONNECTED;
+        State lteValue = State::DISCONNECTED;
         uint16_t lteRssi = 0;
-        Value nbIotValue = Value::DISCONNECTED;
+        State nbIotValue = State::DISCONNECTED;
         uint16_t nbIotRssi = 0;
     };
 }

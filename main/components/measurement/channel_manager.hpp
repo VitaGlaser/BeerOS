@@ -20,11 +20,27 @@ namespace AsnPlus
         ChannelManager( DataSource::Manager & dataSourceManager, Database & database ) :
             _dataSourceManager( dataSourceManager ),
             _channels {
-                Channel { database.channelConfigs[ 0 ], database.channelRuntimes[ 0 ], dataSourceManager, database.eventHistory0 },
-                Channel { database.channelConfigs[ 1 ], database.channelRuntimes[ 1 ], dataSourceManager, database.eventHistory1 },
-                Channel { database.channelConfigs[ 2 ], database.channelRuntimes[ 2 ], dataSourceManager, database.eventHistory2 },
-                Channel { database.channelConfigs[ 3 ], database.channelRuntimes[ 3 ], dataSourceManager, database.eventHistory3 }
-            }
+                Channel {
+                         database.channelConfigs[ 0 ],
+                         database.channelRuntimes[ 0 ],
+                         dataSourceManager, database.eventHistory0
+                },
+                Channel {
+                         database.channelConfigs[ 1 ],
+                         database.channelRuntimes[ 1 ],
+                         dataSourceManager, database.eventHistory1
+                },
+                Channel {
+                         database.channelConfigs[ 2 ],
+                         database.channelRuntimes[ 2 ],
+                         dataSourceManager, database.eventHistory2
+                },
+                Channel {
+                         database.channelConfigs[ 3 ],
+                         database.channelRuntimes[ 3 ],
+                         dataSourceManager, database.eventHistory3
+                }
+        }
         {
         }
 
@@ -43,11 +59,18 @@ namespace AsnPlus
 
         void poll()
         {
-
             uint8_t index = 0;
             for ( auto & channel : _channels )
             {
-                _checkBinding( channel, index );
+                if ( channel.getConfig().timestamp != _lastConfigTimestamps[ index ] )
+                {
+                    Log::info( "Channel %u config changed, reconfiguring", index );
+                    _lastConfigTimestamps[ index ] = channel.getConfig().timestamp;
+                    _enableFlow( channel, index );
+                    _enableTemperature( channel, index );
+                    _enablePressure( channel, index );
+                    _checkBinding( channel, index );
+                }
                 channel.poll();
                 ++index;
             }
@@ -60,12 +83,114 @@ namespace AsnPlus
         DataSource::Manager & _dataSourceManager;
 
         Array< Channel, DataSource::Manager::NUM_CHANNELS > _channels;
+        uint64_t _lastConfigTimestamps[ DataSource::Manager::NUM_CHANNELS ] {};
 
         void _checkBinding( Channel & channel, uint8_t index )
         {
             channel.bindFlowSensorDataSource( index );
             channel.bindTemperatureSensorDataSource( index );
             channel.bindPressureSensorDataSource( index );
+        }
+
+        void _enableFlow( Channel & channel, uint8_t index )
+        {
+            switch ( channel.getConfig().flowType )
+            {
+                case Channel::Config::FlowType::MODBUS:
+                    {
+                        _dataSourceManager.unbindFlowPulseTimerChannel( index );
+
+                        _dataSourceManager.getFlowModbusDataSource( index )->enable();
+                        break;
+                    }
+                case Channel::Config::FlowType::PULSE:
+                    {
+                        _dataSourceManager.getFlowModbusDataSource( index )->disable();
+
+                        auto port = static_cast< uint8_t >( channel.getConfig().flowConfig.id - 1 );
+                        _dataSourceManager.bindFlowPulseToTimerChannel( index, port );
+                        break;
+                    }
+                case Channel::Config::FlowType::UNKNOWN:
+                    {
+                        _dataSourceManager.getFlowModbusDataSource( index )->disable();
+
+                        _dataSourceManager.unbindFlowPulseTimerChannel( index );
+                        break;
+                    }
+                default:
+                    {
+                        Log::error(
+                            "Unsupported flow type for enabling: %d",
+                            static_cast< uint8_t >( channel.getConfig().flowType )
+                        );
+                        _dataSourceManager.getFlowModbusDataSource( index )->disable();
+                        _dataSourceManager.unbindFlowPulseTimerChannel( index );
+                        break;
+                    }
+            }
+        }
+
+        void _enableTemperature( Channel & channel, uint8_t index )
+        {
+            switch ( channel.getConfig().temperatureType )
+            {
+                case Channel::Config::TemperatureType::MODBUS:
+                    {
+                        _dataSourceManager.getTemperatureModbusDataSource( index )->enable();
+                        break;
+                    }
+                case Channel::Config::TemperatureType::ANALOG:
+
+                case Channel::Config::TemperatureType::ONE_WIRE:
+
+                case Channel::Config::TemperatureType::UNKNOWN:
+                    {
+                        _dataSourceManager.getTemperatureModbusDataSource( index )->disable();
+                        break;
+                    }
+
+                default:
+                    {
+                        Log::error(
+                            "Unsupported temperature type for enabling: %d",
+                            static_cast< uint8_t >( channel.getConfig().temperatureType )
+                        );
+                        _dataSourceManager.getTemperatureModbusDataSource( index )->disable();
+                        break;
+                    }
+            }
+        }
+
+        void _enablePressure( Channel & channel, uint8_t index )
+        {
+            switch ( channel.getConfig().pressureType )
+            {
+                case Channel::Config::PressureType::ANALOG:
+                    break;
+                case Channel::Config::PressureType::UNKNOWN:
+                    break;
+                default:
+                    {
+                        Log::error(
+                            "Unsupported pressure type for enabling: %d",
+                            static_cast< uint8_t >( channel.getConfig().pressureType )
+                        );
+                        break;
+                    }
+            }
+        }
+
+        void _enableDataSources()
+        {
+            uint8_t index = 0;
+            for ( auto & channel : _channels )
+            {
+                _enableFlow( channel, index );
+                _enableTemperature( channel, index );
+                _enablePressure( channel, index );
+                ++index;
+            }
         }
     };
 }    // namespace AsnPlus

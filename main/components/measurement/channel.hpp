@@ -15,8 +15,6 @@ namespace AsnPlus
     class Channel
     {
     public:
-        using Runtime = EventMonitor::Runtime;
-
         struct Config : AsnPlus::Config
         {
             enum class FlowType : uint8_t
@@ -40,7 +38,13 @@ namespace AsnPlus
                 ANALOG
             };
 
-            struct BeerSizeConfig
+            enum class ConductivityType : uint8_t
+            {
+                UNKNOWN = 0,
+                MODBUS
+            };
+
+            struct ClassificationConfig
             {
                 static constexpr size_t NAME_LENGTH = 32;
 
@@ -50,29 +54,57 @@ namespace AsnPlus
                 uint32_t maxVolume = 0;
             };
 
-            static constexpr size_t   PORT_CONFIG_ID_LENGTH = 32;
-            static constexpr uint8_t  BEER_SIZE_COUNT       = 8;
+            static constexpr uint8_t CLASSIFICATION_CONFIG_COUNT                      = 8;
 
-            char            portConfigId[ PORT_CONFIG_ID_LENGTH ] {};
-            bool            enabled  = false;
-            FlowType        flowType = FlowType::UNKNOWN;
-            Sensor::Config  flowConfig {};
-            TemperatureType temperatureType = TemperatureType::UNKNOWN;
-            Sensor::Config  temperatureConfig {};
-            PressureType    pressureType = PressureType::UNKNOWN;
-            Sensor::Config  pressureConfig {};
-            uint16_t        beerTypeId = 0;
-            BeerSizeConfig  beerSizes[ BEER_SIZE_COUNT ] {};
-            uint32_t        tapTimeoutMs = 0;
-            uint32_t        tankCapacity = 0;
-            uint32_t        cleaningVolumeThr = 0;
+            bool                 enabled                                              = false;
+            FlowType             flowType                                             = FlowType::UNKNOWN;
+            Sensor::Config       flowConfig                                           = {};
+            TemperatureType      temperatureType                                      = TemperatureType::UNKNOWN;
+            Sensor::Config       temperatureConfig                                    = {};
+            PressureType         pressureType                                         = PressureType::UNKNOWN;
+            Sensor::Config       pressureConfig                                       = {};
+            ConductivityType     conductivityType                                     = ConductivityType::UNKNOWN;
+            Sensor::Config       conductivityConfig                                   = {};
+            uint16_t             beverageId                                           = 0;
+            ClassificationConfig classificationConfigs[ CLASSIFICATION_CONFIG_COUNT ] = {};
+            uint32_t             tapTimeoutMs                                         = 0;
+            uint32_t             tankCapacity                                         = 0;
+            uint32_t             cleaningVolumeThr                                    = 0;
+        };
+
+        struct UnrecognizedEvents
+        {
+            uint32_t count  = 0;
+            uint32_t volume = 0;
+        };
+
+        struct ClassificationState
+        {
+            uint32_t count           = 0;
+            uint32_t volume          = 0;
+            uint32_t averageQuality  = 0;    // TBD
+            uint32_t underLimitCount = 0;
+            uint32_t overLimitCount  = 0;
+        };
+
+        struct Runtime : AsnPlus::Runtime
+        {
+            uint64_t tankLevel                                                             = 0;    // ml
+            uint16_t flow                                                                  = 0;    // ml/min
+            uint16_t temperature                                                           = 0;    // celsius * 10
+            uint16_t pressure                                                              = 0;
+            uint16_t conductivity                                                          = 0;    // TBD
+
+            UnrecognizedEvents unrecognizedEvents                                          = {};
+
+            ClassificationState classificationState[ Config::CLASSIFICATION_CONFIG_COUNT ] = {};
         };
 
         Channel(
-            Config &                        config,
-            EventMonitor::Runtime &         runtime,
-            DataSource::Manager &           dataSourceManager,
-            IRingBuffer< EventMonitor::Event > & event_history
+            Config &                             config,
+            Runtime &                            runtime,
+            DataSource::Manager &                dataSourceManager,
+            IRingBuffer< EventMonitor::Event > & eventHistory
         ) :
             _config( config ),
             _runtime( runtime ),
@@ -80,7 +112,15 @@ namespace AsnPlus
             _flow( config.flowConfig ),
             _temperature( config.temperatureConfig ),
             _pressure( config.pressureConfig ),
-            _eventMonitor( _config.tapTimeoutMs, _runtime, _flow, _temperature, _pressure, event_history )
+            _eventMonitor(
+                _config.tapTimeoutMs,
+                _eventMonitorRuntime,
+                _flow,
+                _temperature,
+                _pressure,
+                eventHistory,
+                Delegate< void( EventMonitor::Event & ) >::create< Channel, &Channel::_onEventEnd >( *this )
+            )
         {
         }
 
@@ -98,43 +138,57 @@ namespace AsnPlus
 
         void poll()
         {
-            if ( _config.flowType != Config::FlowType::UNKNOWN )
-            {
-                _flow.poll();
-            }
+            if ( ! _config.enabled ) return;
 
-            if ( _config.temperatureType != Config::TemperatureType::UNKNOWN )
-            {
-                _temperature.poll();
-            }
+            _eventMonitor.poll();
 
-            if ( _config.pressureType != Config::PressureType::UNKNOWN )
-            {
-                _pressure.poll();
-            }
+            _runtime.flow        = _eventMonitorRuntime.flow.value;
+            _runtime.temperature = _eventMonitorRuntime.temperature.value;
+            _runtime.pressure    = _eventMonitorRuntime.pressure.value;
         }
 
         Config & getConfig() { return _config; }
 
         Runtime & getRuntime() { return _runtime; }
 
+        void resetRuntime() { memset( &_runtime, 0, sizeof( Runtime ) ); }
+
         void bindFlowSensorDataSource( uint8_t index )
         {
             switch ( _config.flowType )
             {
                 case Config::FlowType::MODBUS:
-                    if ( auto * dataSource = _dataSourceManager.getFlowModbusDataSource( index ) )
                     {
-                        dataSource->setId( _config.flowConfig.id );
-                        _flow.bindDataSource( *dataSource );
+                        auto * dataSource = _dataSourceManager.getFlowModbusDataSourceById( _config.flowConfig.id );
+                        if ( dataSource )
+                        {
+                            Log::debug( "Binding Modbus flow sensor data source by ID '%llu'", _config.flowConfig.id );
+                        }
+                        else
+                        {
+                            Log::debug(
+                                "No Modbus flow data source with ID '%llu', falling back to index %u",
+                                _config.flowConfig.id,
+                                index
+                            );
+                            dataSource = _dataSourceManager.getFlowModbusDataSource( index );
+                            if ( dataSource ) dataSource->setId( _config.flowConfig.id );
+                        }
+                        if ( dataSource ) _flow.bindDataSource( *dataSource );
+                        break;
                     }
-                    break;
                 case Config::FlowType::PULSE:
-                    // if ( auto dataSource = _dataSourceManager.getPulseDataSource( _config.flowConfig.id ) )
-                    // {
-                    //     _flow.bindDataSource( *dataSource );
-                    // }
-                    // break;
+                    {
+                        auto * dataSource = _dataSourceManager.getFlowPulseDataSource( index );
+                        if ( dataSource )
+                        {
+                            Log::debug(
+                                "Binding pulse flow sensor (channel %u -> port %llu)", index, _config.flowConfig.id
+                            );
+                            _flow.bindDataSource( *dataSource );
+                        }
+                        break;
+                    }
                 case Config::FlowType::UNKNOWN:
                     _flow.unbindDataSource();
                     break;
@@ -149,12 +203,29 @@ namespace AsnPlus
             switch ( _config.temperatureType )
             {
                 case Config::TemperatureType::MODBUS:
-                    if ( auto * dataSource = _dataSourceManager.getTemperatureModbusDataSource( index ) )
                     {
-                        dataSource->setId( _config.temperatureConfig.id );
-                        _temperature.bindDataSource( *dataSource );
+                        auto * dataSource =
+                            _dataSourceManager.getTemperatureModbusDataSourceById( _config.temperatureConfig.id );
+                        if ( dataSource )
+                        {
+                            Log::debug(
+                                "Binding Modbus temperature sensor data source by ID '%llu'",
+                                _config.temperatureConfig.id
+                            );
+                        }
+                        else
+                        {
+                            Log::debug(
+                                "No Modbus temperature data source with ID '%llu', falling back to index %u",
+                                _config.temperatureConfig.id,
+                                index
+                            );
+                            dataSource = _dataSourceManager.getTemperatureModbusDataSource( index );
+                            if ( dataSource ) dataSource->setId( _config.temperatureConfig.id );
+                        }
+                        if ( dataSource ) _temperature.bindDataSource( *dataSource );
+                        break;
                     }
-                    break;
                 case Config::TemperatureType::ANALOG:
                     // if ( auto dataSource =
                     //          _dataSourceManager.getAnalogTemperatureDataSource( _config.temperatureConfig.id ) )
@@ -205,7 +276,7 @@ namespace AsnPlus
 
     private:
         static constexpr const char TAG[] = "Channel";
-        using Log                         = Logger< ProjectConfig::LOG_LEVEL_MEASUREMENT, TAG >;
+        using Log                         = Logger< ProjectConfig::LOG_LEVEL_CHANNEL, TAG >;
 
         Config &  _config;
         Runtime & _runtime;
@@ -216,6 +287,52 @@ namespace AsnPlus
         Sensor _temperature;
         Sensor _pressure;
 
-        EventMonitor _eventMonitor;
+        EventMonitor::Runtime _eventMonitorRuntime;
+        EventMonitor          _eventMonitor;
+
+        int8_t _determineBeerSizeIndex( uint32_t volume ) const
+        {
+            for ( uint8_t i = 0; i < Config::CLASSIFICATION_CONFIG_COUNT; ++i )
+            {
+                const auto & size = _config.classificationConfigs[ i ];
+                if ( size.minVolume == 0 && size.maxVolume == 0 ) continue;
+                if ( volume >= size.minVolume && volume <= size.maxVolume )
+                {
+                    return static_cast< int8_t >( i );
+                }
+            }
+            return -1;
+        }
+
+        void _onEventEnd( EventMonitor::Event & event )
+        {
+            // TODO(DK): This should categorize beverage in the event and add the information the eventMonitor doesnt
+            // know about - like beverage type and size
+            if ( _config.cleaningVolumeThr > 0 && event.volume >= _config.cleaningVolumeThr )
+            {
+                Log::info(
+                    "Event classified as cleaning (volume=%u, threshold=%u)", event.volume, _config.cleaningVolumeThr
+                );
+                return;
+            }
+
+            const int8_t index = _determineBeerSizeIndex( event.volume );
+            if ( index < 0 )
+            {
+                Log::warn(
+                    "Event volume %u does not match any classification, counting as unrecognized", event.volume
+                );
+                ++_runtime.unrecognizedEvents.count;
+                _runtime.unrecognizedEvents.volume += event.volume;
+                return;
+            }
+
+            Log::info(
+                "Event assigned to classification index %d (volume=%u)", static_cast< int >( index ), event.volume
+            );
+            auto & state = _runtime.classificationState[ static_cast< uint8_t >( index ) ];
+            ++state.count;
+            state.volume += event.volume;
+        }
     };
 }    // namespace AsnPlus

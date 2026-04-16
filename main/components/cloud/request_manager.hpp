@@ -54,9 +54,9 @@ namespace AsnPlus::Cloud
                 return false;
             }
 
-            if ( ! _connectionConfigRequest.initialize() )
+            if ( ! _networkConfigRequest.initialize() )
             {
-                Log::error( "Failed to initialize connectionConfigRequest" );
+                Log::error( "Failed to initialize networkConfigRequest" );
                 return false;
             }
 
@@ -93,19 +93,22 @@ namespace AsnPlus::Cloud
             }
 
             if ( ! _timer.isElapsed() ) return;
-            _timer.start( 30'000 );    // poll every 30 seconds
+            _timer.start( 60'000 );    // poll every 2 minutes
 
             _buildStateRequest();
-            _statePostRequest.send();    // response updates _stateResponse in-place
 
-            if ( _stateResponse.timeConfigTimestamp > _database.timeConfig.timestamp )
-                _timeConfigRequest.send();
+            if ( ! _statePostRequest.send() )    // response updates _stateResponse in-place
+            {
+                Log::error( "State POST failed — skipping config/event requests" );
+                return;
+            }
 
-            if ( _stateResponse.deviceConfigTimestamp > _database.deviceConfig.timestamp )
-                _deviceConfigRequest.send();
+            if ( _stateResponse.timeConfigTimestamp > _database.timeConfig.timestamp ) _timeConfigRequest.send();
 
-            if ( _stateResponse.connectionConfigTimestamp > _database.connectionConfig.timestamp )
-                _connectionConfigRequest.send();
+            if ( _stateResponse.deviceConfigTimestamp > _database.deviceConfig.timestamp ) _deviceConfigRequest.send();
+
+            if ( _stateResponse.networkConfigTimestamp > _database.networkConfig.timestamp )
+                _networkConfigRequest.send();
 
             for ( uint8_t i = 0; i < 4; ++i )
             {
@@ -129,7 +132,7 @@ namespace AsnPlus::Cloud
             _statePostRequest.setClient( client );
             _timeConfigRequest.setClient( client );
             _deviceConfigRequest.setClient( client );
-            _connectionConfigRequest.setClient( client );
+            _networkConfigRequest.setClient( client );
 
             for ( uint8_t i = 0; i < 4; ++i )
             {
@@ -158,7 +161,7 @@ namespace AsnPlus::Cloud
         Vector< uint8_t, BUFFER_SIZE > _buffer {};
         Vector< uint8_t, BUFFER_SIZE > _responseBuffer {};
 
-        Timer _timer {};
+        Timer<> _timer {};
 
         StateResponse _stateResponse {};
         StateRequest  _stateRequestData {};
@@ -211,7 +214,7 @@ namespace AsnPlus::Cloud
             Delegate< void() >::create< RequestManager, &RequestManager::_onDeviceConfigUpdate >( *this )
         };
 
-        Esp32::Https::IFirestoreRequest::Config _connectionConfigRequestConfig {
+        Esp32::Https::IFirestoreRequest::Config _networkConfigRequestConfig {
             Esp32::Https::IClient::Method::GET,
             _database.manufactureInfo.uid,
             "",
@@ -219,11 +222,11 @@ namespace AsnPlus::Cloud
             0
         };
 
-        ConnectionConfigRequest _connectionConfigRequest {
-            _database.connectionConfig,
-            _connectionConfigRequestConfig,
+        NetworkConfigRequest _networkConfigRequest {
+            _database.networkConfig,
+            _networkConfigRequestConfig,
             _responseBuffer,
-            Delegate< void() >::create< RequestManager, &RequestManager::_onConnectionConfigUpdate >( *this )
+            Delegate< void() >::create< RequestManager, &RequestManager::_onNetworkConfigUpdate >( *this )
         };
 
         Array< Esp32::Https::IFirestoreRequest::Config, 4 > _channelConfigRequestConfigs {
@@ -312,10 +315,7 @@ namespace AsnPlus::Cloud
 
         // ─── Callbacks ────────────────────────────────────────────────────────
 
-        void _onStateResponse()
-        {
-            Log::info( "StateResponse received (timestamp: %llu)", _stateResponse.timestamp );
-        }
+        void _onStateResponse() { Log::info( "StateResponse received (timestamp: %llu)", _stateResponse.timestamp ); }
 
         void _onTimeConfigUpdate()
         {
@@ -325,11 +325,13 @@ namespace AsnPlus::Cloud
         void _onDeviceConfigUpdate()
         {
             Log::info( "DeviceConfig updated (timestamp: %llu)", _database.deviceConfig.timestamp );
+            _database.saveDeviceConfig();
         }
 
-        void _onConnectionConfigUpdate()
+        void _onNetworkConfigUpdate()
         {
-            Log::info( "ConnectionConfig updated (timestamp: %llu)", _database.connectionConfig.timestamp );
+            Log::info( "NetworkConfig updated (timestamp: %llu)", _database.networkConfig.timestamp );
+            _database.saveNetworkConfig();
         }
 
         template< uint8_t CHANNEL >
@@ -338,6 +340,7 @@ namespace AsnPlus::Cloud
             Log::info(
                 "ChannelConfig[%u] updated (timestamp: %llu)", CHANNEL, _database.channelConfigs[ CHANNEL ].timestamp
             );
+            _database.saveChannelConfig( CHANNEL - 1 );
         }
 
         // ─── Helpers ──────────────────────────────────────────────────────────
@@ -347,11 +350,11 @@ namespace AsnPlus::Cloud
             _stateRequestData.timestamp = _database.timeRuntime.utcEpochMs;
             _stateRequestData.status    = AsnPlus::Status::OK;
 
-            auto & conn                              = _stateRequestData.connectionState;
-            conn.timestamp                           = _database.timeRuntime.utcEpochMs;
-            conn.ethStatus                           = _database.connectionModuleRuntime.ethValue;
-            conn.wifiStatus                          = _database.connectionModuleRuntime.wifiValue;
-            conn.lteStatus                           = _database.connectionModuleRuntime.lteValue;
+            auto & conn                 = _stateRequestData.connectionState;
+            conn.timestamp              = _database.timeRuntime.utcEpochMs;
+            conn.ethStatus              = _database.connectionModuleRuntime.ethValue;
+            conn.wifiStatus             = _database.connectionModuleRuntime.wifiValue;
+            conn.lteStatus              = _database.connectionModuleRuntime.lteValue;
 
             for ( uint8_t i = 0; i < StateRequest::CHANNEL_COUNT; ++i )
             {
@@ -384,12 +387,12 @@ namespace AsnPlus::Cloud
 
         void _reloadEnvironment()
         {
-            const char * baseUrl                   = getBaseUrl( _environment );
+            const char * baseUrl                = getBaseUrl( _environment );
 
-            _statePostRequestConfig.baseUrl        = baseUrl;
-            _timeConfigRequestConfig.baseUrl       = baseUrl;
-            _deviceConfigRequestConfig.baseUrl     = baseUrl;
-            _connectionConfigRequestConfig.baseUrl = baseUrl;
+            _statePostRequestConfig.baseUrl     = baseUrl;
+            _timeConfigRequestConfig.baseUrl    = baseUrl;
+            _deviceConfigRequestConfig.baseUrl  = baseUrl;
+            _networkConfigRequestConfig.baseUrl = baseUrl;
 
             for ( auto & cfg : _channelConfigRequestConfigs )
             {

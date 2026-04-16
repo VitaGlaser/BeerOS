@@ -10,7 +10,7 @@ namespace AsnPlus::Cloud
 
     static constexpr const char MOCK_TIME_CONFIG_URL[]       = "timeConfig";
     static constexpr const char MOCK_DEVICE_CONFIG_URL[]     = "deviceConfig";
-    static constexpr const char MOCK_CONNECTION_CONFIG_URL[] = "connectionConfig";
+    static constexpr const char MOCK_CONNECTION_CONFIG_URL[] = "networkConfig";
     static constexpr const char MOCK_CHANNEL_CONFIG_URL[]    = "channelConfig";
     static constexpr const char MOCK_STATE_URL[]             = "state";
     static constexpr const char MOCK_CHANNEL_HISTORY_URL[]   = "channelHistory";
