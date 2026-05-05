@@ -1,7 +1,7 @@
 #ifndef _ASNPLUS_DATABASE_ADV_DATA_HPP
 #define _ASNPLUS_DATABASE_ADV_DATA_HPP
 
-#include "asn/asn-esp32-ble/adv_data.hpp"
+#include "asn/asn-esp32-ble/include/adv_data.hpp"
 
 namespace AsnPlus
 {
@@ -13,7 +13,8 @@ namespace AsnPlus
 
         struct ManufacturerSpecific
         {
-            char serial_number[ SERIAL_NUMBER_MAX_LEN ] = { 'A', 'S', 'N', 'P', 'R','D', 'T', 'Y', 'P', 'R', '0', '0', '0', '0', '0', '0' };
+            char serial_number[ SERIAL_NUMBER_MAX_LEN ] =
+                { 'A', 'S', 'N', 'P', 'D', 'T', 'T', 'Y', 'P', 'R', '0', '0', '0', '0', '0', '0' };
         } manufacturer_specific;
 
         IBytes get_name() override { return { (u8 *) device_name, strlen( device_name ) }; }

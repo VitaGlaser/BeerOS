@@ -12,6 +12,7 @@ namespace AsnPlus
     public:
         static void main()
         {
+            instance().processing = new Processing();
             instance().run();
         }
 
@@ -22,14 +23,14 @@ namespace AsnPlus
         }
 
     protected:
-        Processing processing{};
+        Processing * processing = nullptr;
 
         void run()
         {
-            processing.initialize();
+            processing->initialize();
             while (1)
             {
-                processing.poll();
+                processing->poll();
             }
         }
     };

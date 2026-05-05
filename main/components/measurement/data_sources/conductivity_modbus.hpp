@@ -13,10 +13,10 @@
 
 namespace AsnPlus::DataSource
 {
-    class FlowModbus : public Base
+    class ConductivityModbus : public Base
     {
     public:
-        FlowModbus( Modbus::RtuMaster & modbusMaster ) : Base(), _modbusMaster( modbusMaster ) {}
+        ConductivityModbus( Modbus::RtuMaster & modbusMaster ) : Base(), _modbusMaster( modbusMaster ) {}
 
         bool initialize() override
         {
@@ -47,11 +47,11 @@ namespace AsnPlus::DataSource
             uint32_t val = static_cast< uint32_t >( value );
             _writeSample( ts, val );
 
-            Log::debug( "Polled Modbus flow sensor (ID: %llu): %u (%llu ms)", _id, val, ts );
+            Log::debug( "Polled Modbus conductivity sensor (ID: %llu): %u (%llu ms)", _id, val, ts );
         }
 
     private:
-        static constexpr const char TAG[] = "FlowModbusDataSource";
+        static constexpr const char TAG[] = "ConductivityModbusDataSource";
         using Log                         = Logger< ProjectConfig::LOG_LEVEL_DATA_SOURCES, TAG >;
 
         Modbus::RtuMaster & _modbusMaster;

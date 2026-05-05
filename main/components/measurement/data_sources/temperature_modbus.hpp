@@ -5,9 +5,9 @@
 #include "asn/asn-core/logger.hpp"
 #include "asn/asn-core/types.hpp"
 
-#include "asn/asn-hal/time_manager/time_manager.hpp"
+#include "asn/asn-hal/include/time_manager/time_manager.hpp"
 
-#include "asn/asn-esp32-modbus/master.hpp"
+#include "asn/asn-esp32-modbus/include/master.hpp"
 
 #include "base.hpp"
 

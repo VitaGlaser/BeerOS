@@ -9,29 +9,30 @@
 #include "asn/asn-core/types.hpp"
 #include "asn/asn-core/utils.hpp"
 
-#include "asn/asn-esp32-hal/peripherals/gpio.hpp"
-#include "asn/asn-esp32-hal/peripherals/i2c_master.hpp"
-#include "asn/asn-esp32-hal/peripherals/uart.hpp"
+#include "asn/asn-esp32-hal/include/peripherals/gpio.hpp"
+#include "asn/asn-esp32-hal/include/peripherals/i2c_master.hpp"
+#include "asn/asn-esp32-hal/include/peripherals/uart.hpp"
 
 #include "asn/asn-drivers/pcf85263.hpp"
 
-#include "asn/asn-expander-lib/expander.hpp"
-#include "asn/asn-expander-lib/gateway/i2c_gateway.hpp"
-#include "asn/asn-expander-lib/hal/gpio.hpp"
-#include "asn/asn-expander-lib/spi_transport.hpp"
+#include "asn/asn-expander-lib/include/expander.hpp"
+#include "asn/asn-expander-lib/include/gateway/i2c_gateway.hpp"
+#include "asn/asn-expander-lib/include/hal/gpio.hpp"
+#include "asn/asn-expander-lib/include/spi_transport.hpp"
 
-#include "asn/asn-esp32-ble/nimble.hpp"
+#include "asn/asn-esp32-ble/include/nimble.hpp"
 
-#include "asn/asn-esp32-wifi/ethernet/ethernet.hpp"
-#include "asn/asn-esp32-wifi/ethernet/w5500_sta.hpp"
-#include "asn/asn-esp32-wifi/wifi_manager.hpp"
+#include "asn/asn-esp32-wifi/include/ethernet/ethernet.hpp"
+#include "asn/asn-esp32-wifi/include/ethernet/w5500_sta.hpp"
+#include "asn/asn-esp32-wifi/old/wifi_manager.hpp"
 
-#include "asn/asn-esp32-modbus/master.hpp"
+#include "asn/asn-esp32-modbus/include/master.hpp"
 
-#include "asn/asn-eg915-driver/eg915.hpp"
-#include "asn/asn-eg915-driver/https/https_client.hpp"
+#include "asn/asn-eg915-driver/include/eg915.hpp"
+#include "asn/asn-eg915-driver/include/https/https_client.hpp"
 
 #include "components/connection/manager.hpp"
+#include "components/mqtt/manager.hpp"
 
 #include "components/cloud/request_manager.hpp"
 #include "components/leds/ws2812_led_strip.hpp"
@@ -40,10 +41,12 @@
 #include "components/measurement/data_sources/manager.hpp"
 #include "components/measurement/history_manager.hpp"
 
-#include "asn/asn-esp32-hal/time_manager/system_clock.hpp"
+#include "asn/asn-esp32-hal/include/time_manager/system_clock.hpp"
 #include "components/specific_rtc.hpp"
 
-#include "asn/asn-hal/time_manager/time_manager.hpp"
+#include "asn/asn-esp32-hal/include/peripherals/persistent_storage.hpp"
+
+#include "asn/asn-hal/include/time_manager/time_manager.hpp"
 
 #include "database/database.hpp"
 
@@ -56,7 +59,10 @@ namespace AsnPlus
     public:
         Esp32::Nvs nvs {};
 
-        Database database {};
+        Esp32::PersistentStorage::Config persistentStorageConfig {};
+        Esp32::PersistentStorage         persistentStorage { persistentStorageConfig };
+
+        Database database { persistentStorage };
 
         // MARK: Time related stuff
         Esp32::I2cMaster::Config i2cConfig { 100'000, I2C_NUM_0, Pinout::I2C_SDA, Pinout::I2C_SCL, true };
@@ -66,8 +72,14 @@ namespace AsnPlus
         Esp32::SystemClock systemClock {};
         SpecificRtc        rtc { pcfRtc };
 
-        TimeManager
-            timeManager { systemClock, rtc, database.timeConfig, database.timeRuntime, database.timeChangeRequest };
+        TimeManager timeManager {
+            systemClock,
+            &rtc,
+            persistentStorage,
+            database.timeConfig,
+            database.timeRuntime,
+            database.timeChangeRequest
+        };
 
         // MARK: Communication
         Bluetooth::Nimble nimble { database.advertisingData, database.bluetoothConfig, database.bluetoothState };
@@ -103,8 +115,18 @@ namespace AsnPlus
         };
 
         Network::W5500Sta      ethSta { ethStaConfig, database.ethStaRuntime };
-        Network::W5500Ethernet    ethernet { database.ethConfig, database.ethRuntime, ethSta };
-        Esp32::Https::Client      ethernetClient {};
+        Network::W5500Ethernet ethernet { database.ethConfig, database.ethRuntime, ethSta };
+        Esp32::Https::Client   ethernetClient {};
+
+        Esp32::Mqtt::Client::Runtime mqttRuntime {};
+        Esp32::Mqtt::Client          mqttClient {
+            database.mqttConfig,
+            mqttRuntime,
+            Esp32::Mqtt::Client::OnMessage::create< Mqtt::Manager, &Mqtt::Manager::onMessage >( mqttManager ),
+            Esp32::Mqtt::Client::OnConnect::create< Mqtt::Manager, &Mqtt::Manager::onConnected >( mqttManager ),
+        };
+
+        Mqtt::Manager mqttManager { mqttClient, database };
 
         Cloud::RequestManager requestManager { database };
 
@@ -121,7 +143,8 @@ namespace AsnPlus
             wifiClient,
             lte,
             lteClient,
-            requestManager
+            requestManager,
+            mqttManager
         };
 
         // MARK: Peripheral Ports
@@ -205,21 +228,24 @@ namespace AsnPlus
 
             ledStrip.initialize();
             for ( int i = 0; i < 16; i += 2 ) ledStrip.setColor( i + 1, Color { 77, 0, 255 } );
-            // ledStrip.clear_all();
+            ledStrip.poll();
+            Utils::delay( 1000 );
+            ledStrip.clear_all();
             ledStrip.poll();
 
             _initializeTasks();
 
+            Log::info( "Initialized" );
+            
             if ( ProjectConfig::LOG_LEVEL >= 2 )
             {
                 vTaskDelete( NULL );
             }
-
-            Log::info( "Initialized" );
         }
 
         void poll()
         {
+
             Log::info(
                 "Free heap: %lu %u %u",
                 esp_get_free_heap_size(),
@@ -249,9 +275,11 @@ namespace AsnPlus
         void communicationPoll()
         {
             database.poll();
-
             connectionManager.poll();
+            connectionManager.httpsPoll();
         }
+
+        void mqttPoll() { connectionManager.mqttPoll(); }
 
         void lteUartPoll() { lteAtUart.poll(); }
 
@@ -320,6 +348,16 @@ namespace AsnPlus
             }
         }
 
+        static void mqttTask( void * pvParameters )
+        {
+            Components * components = static_cast< Components * >( pvParameters );
+            while ( true )
+            {
+                components->mqttPoll();
+                vTaskDelay( pdMS_TO_TICKS( MQTT_TASK_DELAY_MS ) );
+            }
+        }
+
         static void lteUartTask( void * pvParameters )
         {
             Components * components = static_cast< Components * >( pvParameters );
@@ -339,6 +377,7 @@ namespace AsnPlus
         static constexpr uint32_t CONTROL_TASK_PRIORITY       = 5;
         static constexpr uint32_t DATA_SOURCE_TASK_PRIORITY   = 4;
         static constexpr uint32_t LTE_TASK_PRIORITY           = 3;
+        static constexpr uint32_t MQTT_TASK_PRIORITY          = 3;
         static constexpr uint32_t SYSTEM_TASK_PRIORITY        = 2;
 
         static constexpr uint32_t COMMUNICATION_TASK_DELAY_MS = 100;
@@ -346,6 +385,7 @@ namespace AsnPlus
         static constexpr uint32_t CONTROL_TASK_DELAY_MS       = 10;
         static constexpr uint32_t DATA_SOURCE_TASK_DELAY_MS   = 10;
         static constexpr uint32_t LTE_TASK_DELAY_MS           = 100;
+        static constexpr uint32_t MQTT_TASK_DELAY_MS          = 100;
         static constexpr uint32_t SYSTEM_TASK_DELAY_MS        = 1000;
 
         void _initializeExpander()
@@ -462,9 +502,8 @@ namespace AsnPlus
                 Log::error( "Failed to create components task" );
             }
 
-            if ( xTaskCreatePinnedToCore(
-                     systemTask, "systemTask", 4 * 1024, this, SYSTEM_TASK_PRIORITY, NULL, 1
-                 ) != pdPASS )
+            if ( xTaskCreatePinnedToCore( systemTask, "systemTask", 4 * 1024, this, SYSTEM_TASK_PRIORITY, NULL, 1 ) !=
+                 pdPASS )
             {
                 Log::error( "Failed to create system task" );
             }
@@ -484,10 +523,17 @@ namespace AsnPlus
             }
 
             if ( xTaskCreatePinnedToCore(
-                     communicationTask, "communicationTask", 16 * 1024, this, COMMUNICATION_TASK_PRIORITY, NULL, 0
+                     communicationTask, "communicationTask", 12 * 1024, this, COMMUNICATION_TASK_PRIORITY, NULL, 0
                  ) != pdPASS )
             {
                 Log::error( "Failed to create communication task" );
+            }
+
+            if ( xTaskCreatePinnedToCore(
+                     mqttTask, "mqttTask", 4 * 1024, this, MQTT_TASK_PRIORITY, NULL, 0
+                 ) != pdPASS )
+            {
+                Log::error( "Failed to create mqtt task" );
             }
         }
     };

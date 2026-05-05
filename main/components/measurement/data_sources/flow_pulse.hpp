@@ -4,9 +4,9 @@
 
 #include "asn/asn-core/logger.hpp"
 
-#include "asn/asn-hal/time_manager/time_manager.hpp"
+#include "asn/asn-hal/include/time_manager/time_manager.hpp"
 
-#include "asn/asn-expander-lib/timer/timer.hpp"
+#include "asn/asn-expander-lib/include/timer/timer.hpp"
 
 #include "base.hpp"
 

@@ -19,26 +19,31 @@ namespace AsnPlus
     public:
         ChannelManager( DataSource::Manager & dataSourceManager, Database & database ) :
             _dataSourceManager( dataSourceManager ),
+            _database( database ),
             _channels {
                 Channel {
-                         database.channelConfigs[ 0 ],
+                         0, database.channelConfigs[ 0 ],
                          database.channelRuntimes[ 0 ],
-                         dataSourceManager, database.eventHistory0
+                         dataSourceManager, database.eventHistory0,
+                         database.channelHistorySeqNums[ 0 ]
                 },
                 Channel {
-                         database.channelConfigs[ 1 ],
+                         1, database.channelConfigs[ 1 ],
                          database.channelRuntimes[ 1 ],
-                         dataSourceManager, database.eventHistory1
+                         dataSourceManager, database.eventHistory1,
+                         database.channelHistorySeqNums[ 1 ]
                 },
                 Channel {
-                         database.channelConfigs[ 2 ],
+                         2, database.channelConfigs[ 2 ],
                          database.channelRuntimes[ 2 ],
-                         dataSourceManager, database.eventHistory2
+                         dataSourceManager, database.eventHistory2,
+                         database.channelHistorySeqNums[ 2 ]
                 },
                 Channel {
-                         database.channelConfigs[ 3 ],
+                         3, database.channelConfigs[ 3 ],
                          database.channelRuntimes[ 3 ],
-                         dataSourceManager, database.eventHistory3
+                         dataSourceManager, database.eventHistory3,
+                         database.channelHistorySeqNums[ 3 ]
                 }
         }
         {
@@ -72,6 +77,13 @@ namespace AsnPlus
                     _checkBinding( channel, index );
                 }
                 channel.poll();
+
+                if ( _database.channelHistorySeqNums[ index ] != _lastSavedSeqNums[ index ] )
+                {
+                    _lastSavedSeqNums[ index ] = _database.channelHistorySeqNums[ index ];
+                    _database.saveChannelHistorySeqNum( index );
+                }
+
                 ++index;
             }
         }
@@ -81,9 +93,11 @@ namespace AsnPlus
         using Log                         = Logger< ProjectConfig::LOG_LEVEL_MEASUREMENT, TAG >;
 
         DataSource::Manager & _dataSourceManager;
+        Database &            _database;
 
         Array< Channel, DataSource::Manager::NUM_CHANNELS > _channels;
         uint64_t _lastConfigTimestamps[ DataSource::Manager::NUM_CHANNELS ] {};
+        uint32_t _lastSavedSeqNums[ DataSource::Manager::NUM_CHANNELS ] {};
 
         void _checkBinding( Channel & channel, uint8_t index )
         {

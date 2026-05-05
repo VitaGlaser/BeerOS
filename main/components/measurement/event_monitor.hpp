@@ -29,7 +29,7 @@ namespace AsnPlus
 
         struct Event
         {
-            static constexpr uint16_t HISTORY_SIZE = 100;
+            static constexpr uint16_t HISTORY_SIZE = 50;
 
             enum class EventType : uint8_t
             {
@@ -63,6 +63,7 @@ namespace AsnPlus
             Sensor &                    temperature,
             Sensor &                    pressure,
             IRingBuffer< Event > &      eventHistory,
+            uint32_t &                  lastSeqNum,
             Delegate< void( Event & ) > onEventEnd = {}
         ) :
             _tapTimeoutMs( tapTimeoutMs ),
@@ -71,6 +72,7 @@ namespace AsnPlus
             _temperature( temperature ),
             _pressure( pressure ),
             _eventHistory( eventHistory ),
+            _lastSeqNum( lastSeqNum ),
             _onEventEnd( onEventEnd )
         {
         }
@@ -146,7 +148,16 @@ namespace AsnPlus
             _eventActive = true;
 
             memset( _currentEvent, 0, sizeof( Event ) );
-            _currentEvent->sequenceNumber = _eventHistory.empty() ? 1 : _eventHistory.back().sequenceNumber + 1;
+            if ( ! _eventHistory.empty() && _eventHistory.back().sequenceNumber != _lastSeqNum )
+            {
+                Log::warn(
+                    "Sequence number mismatch: history back=%llu, lastSeqNum=%u — using lastSeqNum",
+                    _eventHistory.back().sequenceNumber,
+                    _lastSeqNum
+                );
+            }
+
+            _currentEvent->sequenceNumber = static_cast< uint64_t >( _lastSeqNum ) + 1;
             _currentEvent->startTimestamp = timestamp;
 
             _volumeAcc                    = 0;
@@ -187,20 +198,23 @@ namespace AsnPlus
 
             _currentEvent->endTimestamp = timestamp;
             _currentEvent->volume       = static_cast< uint32_t >( _volumeAcc / MS_PER_MINUTE );
-            _eventHistory.push( *_currentEvent );
-
-            Log::info(
-                "Event: startTimestamp=%llu, endTimestamp=%llu, volume=%u, historySlots=%u",
-                _currentEvent->startTimestamp,
-                _currentEvent->endTimestamp,
-                _currentEvent->volume,
-                static_cast< uint32_t >( _dsOutIdx )
-            );
 
             if ( _onEventEnd.is_valid() )
             {
                 _onEventEnd( *_currentEvent );
             }
+
+            _eventHistory.push( *_currentEvent );
+            _lastSeqNum = static_cast< uint32_t >( _currentEvent->sequenceNumber );
+
+            Log::info(
+                "Event: startTimestamp=%llu, endTimestamp=%llu, volume=%u, type=%u, historySlots=%u",
+                _currentEvent->startTimestamp,
+                _currentEvent->endTimestamp,
+                _currentEvent->volume,
+                static_cast< uint8_t >( _currentEvent->type ),
+                static_cast< uint32_t >( _dsOutIdx )
+            );
 
             memset( _currentEvent, 0, sizeof( Event ) );
 
@@ -229,6 +243,7 @@ namespace AsnPlus
             static_cast< Event * >( heap_caps_calloc( 1, sizeof( Event ), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT ) );
 
         IRingBuffer< Event > &      _eventHistory;
+        uint32_t &                  _lastSeqNum;
         Delegate< void( Event & ) > _onEventEnd;
 
         // MARK: IncrementalVolume

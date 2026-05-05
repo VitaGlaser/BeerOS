@@ -1,8 +1,8 @@
 #pragma once
 
-#include "asn/asn-esp32-hal/peripherals/gpio.hpp"
+#include "asn/asn-esp32-hal/include/peripherals/gpio.hpp"
 
-#include "asn/asn-expander-lib/expander.hpp"
+#include "asn/asn-expander-lib/include/expander.hpp"
 
 namespace AsnPlus
 {

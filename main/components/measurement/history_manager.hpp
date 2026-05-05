@@ -7,7 +7,7 @@
 #include "asn/asn-core/ring_buffer.hpp"
 #include "asn/asn-core/vector.hpp"
 
-#include "asn/asn-hal/time_manager/structs.hpp"
+#include "asn/asn-hal/include/time_manager/structs.hpp"
 
 #include "event_monitor.hpp"
 
@@ -26,8 +26,8 @@ namespace AsnPlus
     {
     public:
         HistoryManager(
-            const TimeRuntime &                                       timeRuntime,
-            IVector< IRingBuffer< EventMonitor::Event > * > &         eventHistories
+            const TimeRuntime &                               timeRuntime,
+            IVector< IRingBuffer< EventMonitor::Event > * > & eventHistories
         ) :
             _timeRuntime( timeRuntime ),
             _eventHistories( eventHistories )
@@ -73,8 +73,8 @@ namespace AsnPlus
         static constexpr const char TAG[] = "HistoryManager";
         using Log                         = Logger< ProjectConfig::LOG_LEVEL_MEASUREMENT, TAG >;
 
-        const TimeRuntime &                                 _timeRuntime;
-        IVector< IRingBuffer< EventMonitor::Event > * > &   _eventHistories;
+        const TimeRuntime &                               _timeRuntime;
+        IVector< IRingBuffer< EventMonitor::Event > * > & _eventHistories;
 
         uint64_t _lastKnownTime    = 0;
         uint64_t _correctionOffset = 0;
@@ -102,9 +102,7 @@ namespace AsnPlus
                 if ( ! fixStart && ! fixEnd )
                 {
                     Log::debug(
-                        "Channel %u event #%llu: skipped (both timestamps already valid)",
-                        channel,
-                        event.sequenceNumber
+                        "Channel %u event #%llu: skipped (both timestamps already valid)", channel, event.sequenceNumber
                     );
                     continue;
                 }
@@ -120,7 +118,7 @@ namespace AsnPlus
                 );
 
                 if ( fixStart ) event.startTimestamp += offset;
-                if ( fixEnd )   event.endTimestamp   += offset;
+                if ( fixEnd ) event.endTimestamp += offset;
                 ++count;
             }
 

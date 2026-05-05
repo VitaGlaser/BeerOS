@@ -6,13 +6,16 @@
 #include "asn/asn-core/logger.hpp"
 #include "asn/asn-core/types.hpp"
 
-#include "asn/asn-esp32-modbus/master.hpp"
-#include "asn/asn-expander-lib/timer/timer.hpp"
+#include "asn/asn-esp32-modbus/include/master.hpp"
+#include "asn/asn-expander-lib/include/timer/timer.hpp"
 
 #include "flow_modbus.hpp"
 #include "flow_pulse.hpp"
-
 #include "temperature_modbus.hpp"
+#include "temperature_analog.hpp"
+#include "temperature_onewire.hpp"
+#include "pressure_analog.hpp"
+#include "conductivity_modbus.hpp"
 
 namespace AsnPlus::DataSource
 {
@@ -22,21 +25,20 @@ namespace AsnPlus::DataSource
         static constexpr uint8_t  NUM_CHANNELS             = 4;
         static constexpr uint16_t DEFAULT_PULSES_PER_LITRE = 236;
 
-        using PulseChannels                                = Array< Expander::Timers::Timer::Channel, NUM_CHANNELS >;
+        using PulseChannels = Array< Expander::Timers::Timer::Channel, NUM_CHANNELS >;
 
         Manager( Modbus::RtuMaster & modbusMaster, PulseChannels & channels ) :
             _modbusMaster( modbusMaster ),
             _timerChannels( channels ),
-            _flowModbusArray {
-                { { modbusMaster }, { modbusMaster }, { modbusMaster }, { modbusMaster } }
-        },
+            _flowModbusArray { { { modbusMaster }, { modbusMaster }, { modbusMaster }, { modbusMaster } } },
             _flowPulseArray {
                 { { DEFAULT_PULSES_PER_LITRE },
                   { DEFAULT_PULSES_PER_LITRE },
                   { DEFAULT_PULSES_PER_LITRE },
                   { DEFAULT_PULSES_PER_LITRE } }
             },
-            _temperatureModbusArray { { { modbusMaster }, { modbusMaster }, { modbusMaster }, { modbusMaster } } }
+            _temperatureModbusArray { { { modbusMaster }, { modbusMaster }, { modbusMaster }, { modbusMaster } } },
+            _conductivityModbusArray { { { modbusMaster }, { modbusMaster }, { modbusMaster }, { modbusMaster } } }
         {
         }
 
@@ -47,53 +49,54 @@ namespace AsnPlus::DataSource
             _initializeModbusFlows();
             _initializePulseFlows();
             _initializeModbusTemperatures();
+            _initializeAnalogTemperatures();
+            _initializeOneWireTemperatures();
+            _initializeAnalogPressures();
+            _initializeModbusConductivities();
 
             Log::info( "Initialized" );
             return true;
         }
 
-        void poll()
+        void pollModbus()
         {
-            for ( uint8_t i = 0; i < NUM_CHANNELS; ++i )
-            {
-                if ( ! _flowModbusArray[ i ].isEnabled() ) continue;
+            _pollModbusArray( _flowModbusArray );
+            _pollModbusArray( _temperatureModbusArray );
+            _pollModbusArray( _conductivityModbusArray );
+        }
 
-                bool already_polled = false;
-                for ( uint8_t j = 0; j < i; ++j )
-                {
-                    if ( _flowModbusArray[ j ].isEnabled() &&
-                         _flowModbusArray[ j ].getId() == _flowModbusArray[ i ].getId() )
-                    {
-                        already_polled = true;
-                        break;
-                    }
-                }
-
-                if ( ! already_polled ) _flowModbusArray[ i ].poll();
-            }
-
+        void pollPulse()
+        {
             for ( uint8_t i = 0; i < NUM_CHANNELS; ++i )
             {
                 if ( _flowPulseArray[ i ].isEnabled() ) _flowPulseArray[ i ].poll();
             }
+        }
+
+        void pollAnalog()
+        {
+            for ( uint8_t i = 0; i < NUM_CHANNELS; ++i )
+            {
+                if ( _temperatureAnalogArray[ i ].isEnabled() ) _temperatureAnalogArray[ i ].poll();
+            }
 
             for ( uint8_t i = 0; i < NUM_CHANNELS; ++i )
             {
-                if ( ! _temperatureModbusArray[ i ].isEnabled() ) continue;
-
-                bool already_polled = false;
-                for ( uint8_t j = 0; j < i; ++j )
-                {
-                    if ( _temperatureModbusArray[ j ].isEnabled() &&
-                         _temperatureModbusArray[ j ].getId() == _temperatureModbusArray[ i ].getId() )
-                    {
-                        already_polled = true;
-                        break;
-                    }
-                }
-
-                if ( ! already_polled ) _temperatureModbusArray[ i ].poll();
+                if ( _pressureAnalogArray[ i ].isEnabled() ) _pressureAnalogArray[ i ].poll();
             }
+        }
+
+        void pollOnewire()
+        {
+            if ( _temperatureOneWire.isEnabled() ) _temperatureOneWire.poll();
+        }
+
+        void poll()
+        {
+            pollModbus();
+            pollPulse();
+            pollAnalog();
+            pollOnewire();
         }
 
         FlowModbus * getFlowModbusDataSource( uint8_t index )
@@ -180,17 +183,91 @@ namespace AsnPlus::DataSource
             return nullptr;
         }
 
+        TemperatureAnalog * getTemperatureAnalogDataSource( uint8_t index )
+        {
+            if ( index >= NUM_CHANNELS )
+            {
+                Log::error( "Invalid index for TemperatureAnalog data source: %d", index );
+                return nullptr;
+            }
+            return &_temperatureAnalogArray[ index ];
+        }
+
+        TemperatureOneWire * getTemperatureOneWireDataSource() { return &_temperatureOneWire; }
+
+        PressureAnalog * getPressureAnalogDataSource( uint8_t index )
+        {
+            if ( index >= NUM_CHANNELS )
+            {
+                Log::error( "Invalid index for PressureAnalog data source: %d", index );
+                return nullptr;
+            }
+            return &_pressureAnalogArray[ index ];
+        }
+
+        ConductivityModbus * getConductivityModbusDataSource( uint8_t index )
+        {
+            if ( index >= NUM_CHANNELS )
+            {
+                Log::error( "Invalid index for ConductivityModbus data source: %d", index );
+                return nullptr;
+            }
+
+            for ( uint8_t j = 0; j < index; ++j )
+            {
+                if ( _conductivityModbusArray[ j ].isEnabled() &&
+                     _conductivityModbusArray[ j ].getId() == _conductivityModbusArray[ index ].getId() )
+                    return &_conductivityModbusArray[ j ];
+            }
+
+            return &_conductivityModbusArray[ index ];
+        }
+
+        ConductivityModbus * getConductivityModbusDataSourceById( uint64_t id )
+        {
+            for ( auto & source : _conductivityModbusArray )
+            {
+                if ( source.getId() == id ) return &source;
+            }
+
+            return nullptr;
+        }
+
     private:
         static constexpr const char TAG[] = "DataSourcesManager";
         using Log                         = Logger< ProjectConfig::LOG_LEVEL_DATA_SOURCES, TAG >;
 
         Modbus::RtuMaster & _modbusMaster;
+        PulseChannels       _timerChannels;
 
-        PulseChannels _timerChannels;
+        Array< FlowModbus, NUM_CHANNELS >          _flowModbusArray;
+        Array< FlowPulse, NUM_CHANNELS >           _flowPulseArray;
+        Array< TemperatureModbus, NUM_CHANNELS >   _temperatureModbusArray;
+        Array< TemperatureAnalog, NUM_CHANNELS >   _temperatureAnalogArray;
+        TemperatureOneWire                         _temperatureOneWire;
+        Array< PressureAnalog, NUM_CHANNELS >      _pressureAnalogArray;
+        Array< ConductivityModbus, NUM_CHANNELS >  _conductivityModbusArray;
 
-        Array< FlowModbus, NUM_CHANNELS >        _flowModbusArray;
-        Array< FlowPulse, NUM_CHANNELS >         _flowPulseArray;
-        Array< TemperatureModbus, NUM_CHANNELS > _temperatureModbusArray;
+        template< typename ARRAY >
+        void _pollModbusArray( ARRAY & array )
+        {
+            for ( uint8_t i = 0; i < NUM_CHANNELS; ++i )
+            {
+                if ( ! array[ i ].isEnabled() ) continue;
+
+                bool already_polled = false;
+                for ( uint8_t j = 0; j < i; ++j )
+                {
+                    if ( array[ j ].isEnabled() && array[ j ].getId() == array[ i ].getId() )
+                    {
+                        already_polled = true;
+                        break;
+                    }
+                }
+
+                if ( ! already_polled ) array[ i ].poll();
+            }
+        }
 
         void _initializeModbusFlows()
         {
@@ -205,6 +282,23 @@ namespace AsnPlus::DataSource
         void _initializeModbusTemperatures()
         {
             for ( auto & source : _temperatureModbusArray ) source.initialize();
+        }
+
+        void _initializeAnalogTemperatures()
+        {
+            for ( auto & source : _temperatureAnalogArray ) source.initialize();
+        }
+
+        void _initializeOneWireTemperatures() { _temperatureOneWire.initialize(); }
+
+        void _initializeAnalogPressures()
+        {
+            for ( auto & source : _pressureAnalogArray ) source.initialize();
+        }
+
+        void _initializeModbusConductivities()
+        {
+            for ( auto & source : _conductivityModbusArray ) source.initialize();
         }
     };
 }    // namespace AsnPlus::DataSource

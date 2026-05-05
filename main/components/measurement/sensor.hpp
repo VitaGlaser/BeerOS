@@ -4,7 +4,7 @@
 #include "asn/asn-core/ring_buffer.hpp"
 #include "asn/asn-core/types.hpp"
 
-#include "asn/asn-hal/common/common_structs.hpp"
+#include "asn/asn-hal/include/common/common_structs.hpp"
 
 #include "data_sources/base.hpp"
 
@@ -52,7 +52,6 @@ namespace AsnPlus
             {
                 Log::debug( "No data source configured for this sensor" );
                 return {};
-
             }
 
             return _dataSource->read();
@@ -66,7 +65,7 @@ namespace AsnPlus
         static constexpr const char TAG[] = "Sensor";
         using Log                         = AsnPlus::Logger< ProjectConfig::LOG_LEVEL_SENSOR, TAG >;
 
-        Config &  _config;
+        Config & _config;
 
         DataSource::Base * _dataSource = nullptr;
     };

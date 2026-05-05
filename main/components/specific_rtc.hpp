@@ -2,7 +2,7 @@
 
 #include "asn/asn-drivers/pcf85263.hpp"
 
-#include "asn/asn-hal/time_manager/rtc.hpp"
+#include "asn/asn-hal/include/time_manager/rtc.hpp"
 
 namespace AsnPlus
 {
