@@ -3,7 +3,8 @@
 #include "cJSON.h"
 
 #include "asn/asn-core/types.hpp"
-#include "asn/asn-hal/common/common_structs.hpp"
+#include "asn/asn-hal/include/common/common_structs.hpp"
+#include "asn/asn-hal/include/common/identification_structs.hpp"
 
 #include "components/connection/structs.hpp"
 
@@ -46,11 +47,26 @@ namespace AsnPlus::Cloud
         static constexpr const char LTE_STATE_TAG[]  = "lteStatus";
     }    // namespace ConnectionStateJson
 
+    namespace FirmwareInfoJson
+    {
+        static constexpr const char VERSION_TAG[]            = "version";
+        static constexpr const char DATA_MODEL_VERSION_TAG[] = "dataModelVersion";
+    }    // namespace FirmwareInfoJson
+
+    namespace ManufactureInfoJson
+    {
+        static constexpr const char CTS_TAG[]         = "cts";
+        static constexpr const char UID_TAG[]         = "uid";
+        static constexpr const char ENVIRONMENT_TAG[] = "environment";
+    }    // namespace ManufactureInfoJson
+
     namespace StateRequestJson
     {
         static constexpr const char TIMESTAMP_TAG[]        = "timestamp";
         static constexpr const char STATUS_TAG[]           = "status";
         static constexpr const char RUNTIME_TAG[]          = "runtime";
+        static constexpr const char FIRMWARE_INFO_TAG[]    = "firmwareInfo";
+        static constexpr const char MANUFACTURE_INFO_TAG[] = "manufactureInfo";
         static constexpr const char CONNECTION_STATE_TAG[] = "connectionState";
         static constexpr const char CHANNELS_STATE_TAG[]   = "channelsState";
     }    // namespace StateRequestJson
@@ -72,17 +88,11 @@ namespace AsnPlus::Cloud
         uint32_t volume = 0;
     };
 
-    enum class ChannelStatus : uint8_t
-    {
-        UNKNOWN = 0,
-        TBD
-    };
-
     struct ChannelState
     {
         static constexpr uint8_t CLASSIFICATION_COUNT = 8;
 
-        ChannelStatus       status                    = ChannelStatus::UNKNOWN;
+        AsnPlus::Status     status                    = AsnPlus::Status::UNKNOWN;
         uint32_t            tankLevel                 = 0;
         uint16_t            temperature               = 0;
         uint16_t            pressure                  = 0;
@@ -104,14 +114,36 @@ namespace AsnPlus::Cloud
     {
         static constexpr uint8_t CHANNEL_COUNT = 4;
 
-        uint64_t        timestamp              = 0;
-        AsnPlus::Status status                 = AsnPlus::Status::UNKNOWN;
-        uint32_t        runtime                = 0;
-        ConnectionState connectionState {};
-        ChannelState    channelsState[ CHANNEL_COUNT ] {};
+        uint64_t                 timestamp     = 0;
+        AsnPlus::Status          status        = AsnPlus::Status::UNKNOWN;
+        uint32_t                 runtime       = 0;
+        AsnPlus::FirmwareInfo    firmwareInfo {};
+        AsnPlus::ManufactureInfo manufactureInfo {};
+        ConnectionState          connectionState {};
+        ChannelState             channelsState[ CHANNEL_COUNT ] {};
     };
 
     // MARK: toJson
+
+    void toJson( AsnPlus::FirmwareInfo & info, cJSON * json )
+    {
+        cJSON_AddNumberToObject( json, FirmwareInfoJson::VERSION_TAG, info.version );
+        cJSON_AddNumberToObject( json, FirmwareInfoJson::DATA_MODEL_VERSION_TAG, info.dataModelVersion );
+    }
+
+    void toJson( AsnPlus::ManufactureInfo & info, cJSON * json )
+    {
+        cJSON_AddNumberToObject( json, ManufactureInfoJson::CTS_TAG, static_cast< double >( info.cts ) );
+
+        char uid_str[ AsnPlus::ManufactureInfo::UID_LENGTH + 1 ];
+        memcpy( uid_str, info.uid, AsnPlus::ManufactureInfo::UID_LENGTH );
+        uid_str[ AsnPlus::ManufactureInfo::UID_LENGTH ] = '\0';
+        cJSON_AddStringToObject( json, ManufactureInfoJson::UID_TAG, uid_str );
+
+        cJSON_AddNumberToObject(
+            json, ManufactureInfoJson::ENVIRONMENT_TAG, static_cast< uint8_t >( info.environment )
+        );
+    }
 
     void toJson( ClassificationState & state, cJSON * json )
     {
@@ -166,6 +198,14 @@ namespace AsnPlus::Cloud
         cJSON_AddNumberToObject( json, StateRequestJson::TIMESTAMP_TAG, static_cast< double >( request.timestamp ) );
         cJSON_AddNumberToObject( json, StateRequestJson::STATUS_TAG, static_cast< uint8_t >( request.status ) );
         cJSON_AddNumberToObject( json, StateRequestJson::RUNTIME_TAG, request.runtime );
+
+        cJSON * fwInfoJson = cJSON_CreateObject();
+        toJson( request.firmwareInfo, fwInfoJson );
+        cJSON_AddItemToObject( json, StateRequestJson::FIRMWARE_INFO_TAG, fwInfoJson );
+
+        cJSON * mfInfoJson = cJSON_CreateObject();
+        toJson( request.manufactureInfo, mfInfoJson );
+        cJSON_AddItemToObject( json, StateRequestJson::MANUFACTURE_INFO_TAG, mfInfoJson );
 
         cJSON * connJson = cJSON_CreateObject();
         toJson( request.connectionState, connJson );

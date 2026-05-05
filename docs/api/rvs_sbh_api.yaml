@@ -16,7 +16,7 @@ info:
     Channel-specific endpoints identify the channel via the `channel` query parameter (0–3).
 
     '
-  version: 0.1.4
+  version: 0.1.8
 tags:
   - name: State
     description: Device and channel state reporting
@@ -26,6 +26,8 @@ tags:
     description: Device ownership and organization configuration
   - name: NetworkConfig
     description: Network configuration (Ethernet, WiFi, LTE, request intervals)
+  - name: MqttConfig
+    description: MQTT broker configuration
   - name: ChannelConfig
     description: Per-channel sensor and beverage configuration
   - name: ChannelHistory
@@ -79,15 +81,7 @@ components:
         - CONNECTING
         - CONNECTED
     ChannelStatus:
-      type: integer
-      format: uint8
-      enum:
-        - 0
-        - 1
-      description: Channel status enum
-      x-enum-varnames:
-        - UNKNOWN
-        - TBD
+      $ref: '#/components/schemas/Status'
     FlowSensorType:
       type: integer
       format: uint8
@@ -148,33 +142,6 @@ components:
         - DEVELOP
         - STAGING
         - PRODUCTION
-    FirmwareInfo:
-      type: object
-      properties:
-        version:
-          type: integer
-          format: uint32
-          description: Firmware version
-        dataModelVersion:
-          type: integer
-          format: uint32
-          description: Data model version
-    ManufactureInfo:
-      type: object
-      description: >
-        Device manufacture information. The UID encodes hardware identity in the format
-        AAABBBCCCDEEEEEE (16 characters), where: A = company (3), B = product family (3),
-        C = product type (3), D = HW revision (1), E = serial number (6).
-        HW revision and product type are deductible directly from the UID.
-      properties:
-        cts:
-          $ref: '#/components/schemas/TimestampMs'
-        uid:
-          type: string
-          maxLength: 16
-          description: Unique device identifier
-        environment:
-          $ref: '#/components/schemas/Environment'
     EventType:
       type: integer
       format: uint8
@@ -192,51 +159,231 @@ components:
       format: uint64
       description: Unix epoch timestamp in milliseconds
       example: 1743379200000
-    StateRequest:
+    FirmwareInfo:
       type: object
+      required:
+        - version
+        - dataModelVersion
       properties:
-        timestamp:
-          $ref: '#/components/schemas/TimestampMs'
-        status:
-          allOf:
-            - $ref: '#/components/schemas/Status'
-          description: General device status (from Runtime base)
-        runtime:
+        version:
           type: integer
           format: uint32
-          description: Device uptime in seconds
-        firmwareInfo:
-          $ref: '#/components/schemas/FirmwareInfo'
-        manufactureInfo:
-          $ref: '#/components/schemas/ManufactureInfo'
-        connectionState:
-          $ref: '#/components/schemas/ConnectionState'
-        channelsState:
-          type: array
-          items:
-            $ref: '#/components/schemas/ChannelState'
-          maxItems: 4
-          description: State for all 4 channels
-    StateResponse:
+          description: Firmware version
+        dataModelVersion:
+          type: integer
+          format: uint32
+          description: Data model version
+    ManufactureInfo:
       type: object
-      description: Returned to the device — contains current config timestamps per subsystem.
+      required:
+        - cts
+        - uid
+        - environment
+      description: >
+        Device manufacture information. The UID encodes hardware identity in the format
+        AAABBBCCCDEEEEEE (16 characters), where: A = company (3), B = product family (3),
+        C = product type (3), D = HW revision (1), E = serial number (6).
+        HW revision and product type are deductible directly from the UID.
+      properties:
+        cts:
+          $ref: '#/components/schemas/TimestampMs'
+        uid:
+          type: string
+          maxLength: 16
+          description: Unique device identifier
+        environment:
+          $ref: '#/components/schemas/Environment'
+    Unrecognized:
+      type: object
+      required:
+        - count
+        - volume
+      description: Aggregated info about unrecognized pouring events
+      properties:
+        count:
+          type: integer
+          format: uint32
+          description: Number of unrecognized pour events
+        volume:
+          type: integer
+          format: uint32
+          description: Total unrecognized volume (ml)
+    ClassificationState:
+      type: object
+      required:
+        - count
+        - volume
+        - quality
+        - underLimitCount
+        - overLimitCount
+      properties:
+        count:
+          type: integer
+          format: uint32
+          description: Number of regular size pours on this tank
+        volume:
+          type: integer
+          format: uint32
+          description: Complete volume classified to this size (ml)
+        quality:
+          type: integer
+          format: uint32
+          description: Average quality of dosing on this tank
+        underLimitCount:
+          type: integer
+          format: uint32
+          description: Count of under-limit pours for this size
+        overLimitCount:
+          type: integer
+          format: uint32
+          description: Count of over-limit pours for this size
+    ClassificationConfig:
+      type: object
+      required:
+        - name
+        - minVolume
+        - typVolume
+        - maxVolume
+      properties:
+        name:
+          type: string
+          maxLength: 32
+          description: Name of the size
+        minVolume:
+          type: integer
+          format: uint32
+          description: Minimal volume in milliliters
+        typVolume:
+          type: integer
+          format: uint32
+          description: Typical volume in milliliters
+        maxVolume:
+          type: integer
+          format: uint32
+          description: Maximal volume in milliliters
+    SensorConfig:
+      type: object
+      required:
+        - enabled
+        - id
+      properties:
+        enabled:
+          type: boolean
+        id:
+          type: string
+          pattern: ^(0x)?[0-9a-fA-F]+$
+          description: Sensor identifier. Use source index strings "1" to "4" for MODBUS, PULSE, and ANALOG sensors; use the 0x-prefixed uppercase hexadecimal ROM/code string for ONE_WIRE sensors.
+          example: '1'
+    EthernetConfig:
+      type: object
+      required:
+        - useDhcp
+        - ip
+        - netmask
+        - gateway
+      properties:
+        useDhcp:
+          type: boolean
+        ip:
+          type: string
+          maxLength: 15
+        netmask:
+          type: string
+          maxLength: 15
+        gateway:
+          type: string
+          maxLength: 15
+    WifiConfig:
+      type: object
+      required:
+        - ssid
+        - password
+      properties:
+        ssid:
+          type: string
+          maxLength: 32
+        password:
+          type: string
+          maxLength: 64
+    LteConfig:
+      type: object
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+    MqttConfig:
+      type: object
+      required:
+        - timestamp
+        - enabled
+        - brokerUri
+        - keepalive
+        - useTls
+        - autoReconnect
       properties:
         timestamp:
           $ref: '#/components/schemas/TimestampMs'
-        timeConfigTimestamp:
-          $ref: '#/components/schemas/TimestampMs'
-        deviceConfigTimestamp:
-          $ref: '#/components/schemas/TimestampMs'
-        networkConfigTimestamp:
-          $ref: '#/components/schemas/TimestampMs'
-        channelConfigTimestamps:
-          type: array
-          items:
-            $ref: '#/components/schemas/TimestampMs'
-          maxItems: 4
-          description: Per-channel config timestamps (index = channel number)
+        enabled:
+          type: boolean
+        brokerUri:
+          type: string
+          maxLength: 128
+        username:
+          type: string
+          maxLength: 64
+        password:
+          type: string
+          maxLength: 128
+        keepalive:
+          type: integer
+          format: uint16
+        useTls:
+          type: boolean
+        autoReconnect:
+          type: boolean
+    RequestConfig:
+      type: object
+      required:
+        - ethEventRetryInterval
+        - ethStatusInterval
+        - wifiEventRetryInterval
+        - wifiStatusInterval
+        - lteEventRetryInterval
+        - lteStatusInterval
+      description: Per-transport request interval configuration.
+      properties:
+        ethEventRetryInterval:
+          type: integer
+          format: uint32
+          description: Event retry interval over Ethernet (ms)
+        ethStatusInterval:
+          type: integer
+          format: uint32
+          description: State reporting interval over Ethernet (ms)
+        wifiEventRetryInterval:
+          type: integer
+          format: uint32
+          description: Event retry interval over WiFi (ms)
+        wifiStatusInterval:
+          type: integer
+          format: uint32
+          description: State reporting interval over WiFi (ms)
+        lteEventRetryInterval:
+          type: integer
+          format: uint32
+          description: Event retry interval over LTE (ms)
+        lteStatusInterval:
+          type: integer
+          format: uint32
+          description: State reporting interval over LTE (ms)
     ConnectionState:
       type: object
+      required:
+        - timestamp
+        - ethStatus
+        - wifiStatus
+        - lteStatus
       properties:
         timestamp:
           $ref: '#/components/schemas/TimestampMs'
@@ -248,6 +395,15 @@ components:
           $ref: '#/components/schemas/ConnectionStatus'
     ChannelState:
       type: object
+      required:
+        - status
+        - tankLevel
+        - temperature
+        - pressure
+        - flow
+        - conductivity
+        - unrecognized
+        - classificationState
       properties:
         status:
           $ref: '#/components/schemas/ChannelStatus'
@@ -279,143 +435,23 @@ components:
             $ref: '#/components/schemas/ClassificationState'
           maxItems: 8
           description: Pour counts per beverage size type
-    Unrecognized:
-      type: object
-      description: Aggregated info about unrecognized pouring events
-      properties:
-        count:
-          type: integer
-          format: uint32
-          description: Number of unrecognized pour events
-        volume:
-          type: integer
-          format: uint32
-          description: Total unrecognized volume (ml)
-    ClassificationState:
-      type: object
-      properties:
-        count:
-          type: integer
-          format: uint32
-          description: Number of regular size pours on this tank
-        volume:
-          type: integer
-          format: uint32
-          description: Complete volume classified to this size (ml)
-        quality:
-          type: integer
-          format: uint32
-          description: Average quality of dosing on this tank
-        underLimitCount:
-          type: integer
-          format: uint32
-          description: Count of under-limit pours for this size
-        overLimitCount:
-          type: integer
-          format: uint32
-          description: Count of over-limit pours for this size
-    TimeConfig:
-      type: object
-      description: Time configuration exchanged between device and server.
-      properties:
-        timestamp:
-          $ref: '#/components/schemas/TimestampMs'
-        timezone:
-          type: string
-          maxLength: 64
-          description: POSIX timezone string (e.g. "CET-1CEST,M3.5.0,M10.5.0/3")
-        timezoneName:
-          type: string
-          maxLength: 64
-          description: Timezone name (e.g. "Europe/Prague")
-    DeviceConfig:
-      type: object
-      description: Device configuration exchanged between device and server.
-      properties:
-        timestamp:
-          $ref: '#/components/schemas/TimestampMs'
-        ownerId:
-          type: string
-          maxLength: 32
-          description: Identification of device owner
-        organizationId:
-          type: string
-          maxLength: 32
-          description: Identification of restaurant/organization
-    NetworkConfig:
-      type: object
-      description: Network configuration exchanged between device and server.
-      properties:
-        timestamp:
-          $ref: '#/components/schemas/TimestampMs'
-        ethernetConfig:
-          $ref: '#/components/schemas/EthernetConfig'
-        wifiConfig:
-          $ref: '#/components/schemas/WifiConfig'
-        lteConfig:
-          $ref: '#/components/schemas/LteConfig'
-        requestConfig:
-          $ref: '#/components/schemas/RequestConfig'
-    RequestConfig:
-      type: object
-      description: Per-transport request interval configuration.
-      properties:
-        timestamp:
-          $ref: '#/components/schemas/TimestampMs'
-        ethEventRetryInterval:
-          type: integer
-          format: uint32
-          description: Event retry interval over Ethernet (ms)
-        ethStatusInterval:
-          type: integer
-          format: uint32
-          description: State reporting interval over Ethernet (ms)
-        wifiEventRetryInterval:
-          type: integer
-          format: uint32
-          description: Event retry interval over WiFi (ms)
-        wifiStatusInterval:
-          type: integer
-          format: uint32
-          description: State reporting interval over WiFi (ms)
-        lteEventRetryInterval:
-          type: integer
-          format: uint32
-          description: Event retry interval over LTE (ms)
-        lteStatusInterval:
-          type: integer
-          format: uint32
-          description: State reporting interval over LTE (ms)
-    EthernetConfig:
-      type: object
-      properties:
-        useDhcp:
-          type: boolean
-        ip:
-          type: string
-          maxLength: 15
-        netmask:
-          type: string
-          maxLength: 15
-        gateway:
-          type: string
-          maxLength: 15
-    WifiConfig:
-      type: object
-      properties:
-        ssid:
-          type: string
-          maxLength: 32
-        password:
-          type: string
-          maxLength: 64
-    LteConfig:
-      type: object
-      properties:
-        enabled:
-          type: boolean
     ChannelConfig:
       type: object
+      required:
+        - timestamp
+        - enabled
+        - flowType
+        - flowConfig
+        - temperatureType
+        - temperatureConfig
+        - pressureType
+        - pressureConfig
+        - conductivityType
+        - conductivityConfig
+        - classificationConfigs
+        - tapTimeoutMs
+        - tankCapacity
+        - cleaningVolumeThr
       description: Per-channel configuration exchanged between device and server.
       properties:
         timestamp:
@@ -439,10 +475,6 @@ components:
           $ref: '#/components/schemas/ConductivitySensorType'
         conductivityConfig:
           $ref: '#/components/schemas/SensorConfig'
-        beverageId:
-          type: integer
-          format: uint16
-          description: Unique identifier of the beverage type
         classificationConfigs:
           type: array
           items:
@@ -461,39 +493,21 @@ components:
           type: integer
           format: uint32
           description: Volume threshold for detecting a cleaning cycle (ml)
-    ClassificationConfig:
-      type: object
-      properties:
-        name:
-          type: string
-          maxLength: 32
-          description: Name of the size
-        minVolume:
-          type: integer
-          format: uint32
-          description: Minimal volume in milliliters
-        typVolume:
-          type: integer
-          format: uint32
-          description: Typical volume in milliliters
-        maxVolume:
-          type: integer
-          format: uint32
-          description: Maximal volume in milliliters
-    SensorConfig:
-      type: object
-      properties:
-        timestamp:
-          $ref: '#/components/schemas/TimestampMs'
-        enabled:
-          type: boolean
-        id:
-          type: string
-          pattern: ^(0x)?[0-9a-fA-F]+$
-          description: Sensor identifier. Use source index strings "1" to "4" for MODBUS, PULSE, and ANALOG sensors; use the 0x-prefixed uppercase hexadecimal ROM/code string for ONE_WIRE sensors.
-          example: '1'
     ChannelEvent:
       type: object
+      required:
+        - configTimestamp
+        - seqNumber
+        - startTimestamp
+        - endTimestamp
+        - synced
+        - eventType
+        - volume
+        - classification
+        - avgTemperature
+        - avgConductivity
+        - flowProfile
+        - pressureProfile
       description: A single dispensing or cleaning event recorded on a channel.
       properties:
         configTimestamp:
@@ -543,8 +557,126 @@ components:
             format: uint16
           maxItems: 50
           description: Profile of pressure from event
+    StateRequest:
+      type: object
+      required:
+        - timestamp
+        - status
+        - runtime
+        - firmwareInfo
+        - manufactureInfo
+        - connectionState
+        - channelsState
+      properties:
+        timestamp:
+          $ref: '#/components/schemas/TimestampMs'
+        status:
+          allOf:
+            - $ref: '#/components/schemas/Status'
+          description: General device status (from Runtime base)
+        runtime:
+          type: integer
+          format: uint32
+          description: Device uptime in seconds
+        firmwareInfo:
+          $ref: '#/components/schemas/FirmwareInfo'
+        manufactureInfo:
+          $ref: '#/components/schemas/ManufactureInfo'
+        connectionState:
+          $ref: '#/components/schemas/ConnectionState'
+        channelsState:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChannelState'
+          maxItems: 4
+          description: State for all 4 channels
+    StateResponse:
+      type: object
+      required:
+        - timestamp
+        - timeConfigTimestamp
+        - deviceConfigTimestamp
+        - networkConfigTimestamp
+        - mqttConfigTimestamp
+        - channelConfigTimestamps
+      description: Returned to the device — contains current config timestamps per subsystem.
+      properties:
+        timestamp:
+          $ref: '#/components/schemas/TimestampMs'
+        timeConfigTimestamp:
+          $ref: '#/components/schemas/TimestampMs'
+        deviceConfigTimestamp:
+          $ref: '#/components/schemas/TimestampMs'
+        networkConfigTimestamp:
+          $ref: '#/components/schemas/TimestampMs'
+        mqttConfigTimestamp:
+          $ref: '#/components/schemas/TimestampMs'
+        channelConfigTimestamps:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimestampMs'
+          maxItems: 4
+          description: Per-channel config timestamps (index = channel number)
+    TimeConfig:
+      type: object
+      required:
+        - timestamp
+        - timezone
+        - timezoneName
+      description: Time configuration exchanged between device and server.
+      properties:
+        timestamp:
+          $ref: '#/components/schemas/TimestampMs'
+        timezone:
+          type: string
+          maxLength: 64
+          description: POSIX timezone string (e.g. "CET-1CEST,M3.5.0,M10.5.0/3")
+        timezoneName:
+          type: string
+          maxLength: 64
+          description: Timezone name (e.g. "Europe/Prague")
+    DeviceConfig:
+      type: object
+      required:
+        - timestamp
+        - ownerId
+        - organizationId
+      description: Device configuration exchanged between device and server.
+      properties:
+        timestamp:
+          $ref: '#/components/schemas/TimestampMs'
+        ownerId:
+          type: string
+          maxLength: 32
+          description: Identification of device owner
+        organizationId:
+          type: string
+          maxLength: 32
+          description: Identification of restaurant/organization
+    NetworkConfig:
+      type: object
+      required:
+        - timestamp
+        - ethernetConfig
+        - wifiConfig
+        - lteConfig
+        - requestConfig
+      description: Network configuration exchanged between device and server.
+      properties:
+        timestamp:
+          $ref: '#/components/schemas/TimestampMs'
+        ethernetConfig:
+          $ref: '#/components/schemas/EthernetConfig'
+        wifiConfig:
+          $ref: '#/components/schemas/WifiConfig'
+        lteConfig:
+          $ref: '#/components/schemas/LteConfig'
+        requestConfig:
+          $ref: '#/components/schemas/RequestConfig'
     ChannelHistoryRequest:
       type: object
+      required:
+        - event
       description: One event report for a single channel. One event per request due to payload size.
       properties:
         event:
@@ -653,6 +785,7 @@ paths:
                 timeConfigTimestamp: 1743000000000
                 deviceConfigTimestamp: 1742500000000
                 networkConfigTimestamp: 1742000000000
+                mqttConfigTimestamp: 1741500000000
                 channelConfigTimestamps:
                   - 1741000000000
                   - 1741000000000
@@ -751,6 +884,37 @@ paths:
       responses:
         '200':
           description: Network configuration accepted successfully
+  /mqttConfig:
+    get:
+      tags:
+        - MqttConfig
+      summary: Get MQTT configuration
+      description: Device fetches the current MQTT broker configuration from the server.
+      parameters:
+        - $ref: '#/components/parameters/Uid'
+      responses:
+        '200':
+          description: MQTT configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MqttConfig'
+    post:
+      tags:
+        - MqttConfig
+      summary: Post MQTT configuration
+      description: Device uploads the full MQTT configuration object.
+      parameters:
+        - $ref: '#/components/parameters/Uid'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MqttConfig'
+      responses:
+        '200':
+          description: MQTT configuration accepted successfully
   /channelConfig:
     get:
       tags:
@@ -772,25 +936,20 @@ paths:
                 enabled: true
                 flowType: 1
                 flowConfig:
-                  timestamp: 1743379200000
                   enabled: true
                   id: '1'
                 temperatureType: 3
                 temperatureConfig:
-                  timestamp: 1743379200000
                   enabled: true
                   id: '0x28FF641D7216035A'
                 pressureType: 1
                 pressureConfig:
-                  timestamp: 1743379200000
                   enabled: true
                   id: '2'
                 conductivityType: 0
                 conductivityConfig:
-                  timestamp: 1743379200000
                   enabled: false
                   id: '0'
-                beverageId: 101
                 classificationConfigs:
                   - name: Small
                     minVolume: 250
@@ -822,25 +981,20 @@ paths:
               enabled: true
               flowType: 1
               flowConfig:
-                timestamp: 1743379200000
                 enabled: true
                 id: '1'
               temperatureType: 3
               temperatureConfig:
-                timestamp: 1743379200000
                 enabled: true
                 id: '0x28FF641D7216035A'
               pressureType: 1
               pressureConfig:
-                timestamp: 1743379200000
                 enabled: true
                 id: '2'
               conductivityType: 0
               conductivityConfig:
-                timestamp: 1743379200000
                 enabled: false
                 id: '0'
-              beverageId: 101
               classificationConfigs:
                 - name: Small
                   minVolume: 250

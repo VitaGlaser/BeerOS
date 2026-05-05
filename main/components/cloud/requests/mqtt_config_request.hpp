@@ -11,15 +11,15 @@
 
 #include "firestore_request.hpp"
 
-#include "components/cloud/json_conversion/network_config.hpp"
+#include "components/cloud/json_conversion/mqtt_config.hpp"
 
 namespace AsnPlus::Cloud
 {
-    class NetworkConfigRequest : public IFirestoreRequest
+    class MqttConfigRequest : public IFirestoreRequest
     {
     public:
-        NetworkConfigRequest(
-            NetworkConfig &             response,
+        MqttConfigRequest(
+            Mqtt::IClient::Config &     response,
             IFirestoreRequest::Config & config,
             IVector< uint8_t > &        responseBuffer,
             Delegate< void() >          onUpdate
@@ -43,7 +43,6 @@ namespace AsnPlus::Cloud
                 ManufactureInfo::UID_LENGTH,
                 nullptr
             );
-
             return true;
         }
 
@@ -70,7 +69,7 @@ namespace AsnPlus::Cloud
             Log::hexdump( responseLabel, _responseBuffer.data(), _responseBuffer.size() );
 
             cJSON * responseJson = cJSON_Parse( reinterpret_cast< char * >( _responseBuffer.data() ) );
-            if ( ! responseJson )
+            if ( !responseJson )
             {
                 Log::error( "JSON parsing failed (%s)", _url );
                 return false;
@@ -79,23 +78,19 @@ namespace AsnPlus::Cloud
             const uint64_t oldTimestamp = _response.timestamp;
             fromJson( _response, responseJson );
             if ( _response.timestamp != oldTimestamp )
-            {
                 _onUpdate();
-            }
 
             cJSON_Delete( responseJson );
             return true;
         }
 
     private:
-        static constexpr const char TAG[] = "NetworkConfigRequest";
+        static constexpr const char TAG[] = "MqttConfigRequest";
         using Log                         = Logger< ProjectConfig::LOG_LEVEL_CLOUD_REQUESTS, TAG >;
 
         IFirestoreRequest::Config & _config;
-
-        NetworkConfig &      _response;
-        IVector< uint8_t > & _responseBuffer;
-
-        Delegate< void() > _onUpdate;
+        Mqtt::IClient::Config &     _response;
+        IVector< uint8_t > &        _responseBuffer;
+        Delegate< void() >          _onUpdate;
     };
 }    // namespace AsnPlus::Cloud

@@ -9,22 +9,20 @@
 #include "asn/asn-core/types.hpp"
 #include "asn/asn-core/vector.hpp"
 
-#include "asn/asn-esp32-wifi/https/client/ifirestore_request.hpp"
-
-#include "asn/asn-hal/common/common_structs.hpp"
+#include "firestore_request.hpp"
 
 #include "components/cloud/json_conversion/device_config.hpp"
 
 namespace AsnPlus::Cloud
 {
-    class DeviceConfigRequest : public Esp32::Https::IFirestoreRequest
+    class DeviceConfigRequest : public IFirestoreRequest
     {
     public:
         DeviceConfigRequest(
-            DeviceConfig &                              response,
-            Esp32::Https::IFirestoreRequest::Config & config,
-            IVector< uint8_t > &                      responseBuffer,
-            Delegate< void() >                        onUpdate
+            DeviceConfig &              response,
+            IFirestoreRequest::Config & config,
+            IVector< uint8_t > &        responseBuffer,
+            Delegate< void() >          onUpdate
         ) :
             IFirestoreRequest( config ),
             _config( config ),
@@ -32,7 +30,6 @@ namespace AsnPlus::Cloud
             _responseBuffer( responseBuffer ),
             _onUpdate( onUpdate )
         {
-            _config.method = Esp32::Https::IClient::Method::GET;
         }
 
         bool initialize() override
@@ -42,9 +39,9 @@ namespace AsnPlus::Cloud
                 sizeof( _url ),
                 _config.baseUrl,
                 _config.moduleUrl,
-                _config.uuid,
+                _config.uid,
                 ManufactureInfo::UID_LENGTH,
-                NULL
+                nullptr
             );
 
             return true;
@@ -52,22 +49,25 @@ namespace AsnPlus::Cloud
 
         bool send() override
         {
-            _responseBuffer.resize( _responseBuffer.capacity() );
-            uint32_t responseLen = static_cast< uint32_t >( _responseBuffer.size() );
+            _responseBuffer.clear();
+            Https::Request  req  { .method = Https::Method::GET };
+            Https::Response resp { .response = &_responseBuffer };
 
-            uint32_t ret         = request( nullptr, 0, nullptr, 0, _responseBuffer.data(), responseLen );
+            uint16_t status = request( &req, &resp );
 
-            if ( ret != 200 )
+            if ( status != 200 )
             {
-                Log::error( "Request (%s) failed with status code %d", _url, ret );
+                Log::error( "Request (%s) failed with status code %d", _url, status );
                 return false;
             }
 
-            if ( responseLen == 0 ) return true;
+            Log::info( "Request (%s) succeeded with status code %d", _url, status );
 
-            char response_label[ 64 ];
-            snprintf( response_label, sizeof( response_label ), "Response [%s]", _config.moduleUrl );
-            Log::hexdump( response_label, _responseBuffer.data(), responseLen );
+            if ( _responseBuffer.empty() ) return true;
+
+            char responseLabel[ 64 ];
+            snprintf( responseLabel, sizeof( responseLabel ), "Response [%s]", _config.moduleUrl );
+            Log::hexdump( responseLabel, _responseBuffer.data(), _responseBuffer.size() );
 
             cJSON * responseJson = cJSON_Parse( reinterpret_cast< char * >( _responseBuffer.data() ) );
             if ( ! responseJson )
@@ -76,9 +76,9 @@ namespace AsnPlus::Cloud
                 return false;
             }
 
-            const uint64_t old_timestamp = _response.timestamp;
+            const uint64_t oldTimestamp = _response.timestamp;
             fromJson( _response, responseJson );
-            if ( _response.timestamp != old_timestamp )
+            if ( _response.timestamp != oldTimestamp )
             {
                 _onUpdate();
             }
@@ -91,9 +91,9 @@ namespace AsnPlus::Cloud
         static constexpr const char TAG[] = "DeviceConfigRequest";
         using Log                         = Logger< ProjectConfig::LOG_LEVEL_CLOUD_REQUESTS, TAG >;
 
-        Esp32::Https::IFirestoreRequest::Config & _config;
+        IFirestoreRequest::Config & _config;
 
-        DeviceConfig &         _response;
+        DeviceConfig &       _response;
         IVector< uint8_t > & _responseBuffer;
 
         Delegate< void() > _onUpdate;

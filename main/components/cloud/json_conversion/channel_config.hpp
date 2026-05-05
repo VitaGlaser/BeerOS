@@ -15,9 +15,8 @@ namespace AsnPlus::Cloud
 
     namespace SensorConfigJson
     {
-        static constexpr const char TIMESTAMP_TAG[] = "timestamp";
-        static constexpr const char ENABLED_TAG[]   = "enabled";
-        static constexpr const char ID_TAG[]        = "id";
+        static constexpr const char ENABLED_TAG[] = "enabled";
+        static constexpr const char ID_TAG[]      = "id";
     }    // namespace SensorConfigJson
 
     namespace ClassificationConfigJson
@@ -40,8 +39,7 @@ namespace AsnPlus::Cloud
         static constexpr const char PRESS_CONFIG_TAG[]           = "pressureConfig";
         static constexpr const char COND_TYPE_TAG[]              = "conductivityType";
         static constexpr const char COND_CONFIG_TAG[]            = "conductivityConfig";
-        static constexpr const char BEVERAGE_ID_TAG[]            = "beverageId";
-        static constexpr const char CLASSIFICATION_CONFIG_TAG[] = "classificationConfigs:";
+        static constexpr const char CLASSIFICATION_CONFIG_TAG[] = "classificationConfigs";
         static constexpr const char TAP_TIMEOUT_TAG[]           = "tapTimeoutMs";
         static constexpr const char TANK_CAPACITY_TAG[]         = "tankCapacity";
         static constexpr const char CLEANING_VOLUME_THR_TAG[]   = "cleaningVolumeThr";
@@ -51,7 +49,6 @@ namespace AsnPlus::Cloud
 
     void toJson( Sensor::Config & config, cJSON * json )
     {
-        cJSON_AddNumberToObject( json, SensorConfigJson::TIMESTAMP_TAG, static_cast< double >( config.timestamp ) );
         cJSON_AddBoolToObject( json, SensorConfigJson::ENABLED_TAG, config.enabled );
         char id_str[ 17 ];
         snprintf( id_str, sizeof( id_str ), "%llx", static_cast< unsigned long long >( config.id ) );
@@ -60,10 +57,6 @@ namespace AsnPlus::Cloud
 
     void fromJson( Sensor::Config & config, cJSON * json )
     {
-        config.timestamp = static_cast< uint64_t >(
-            cJSON_GetNumberValue( cJSON_GetObjectItem( json, SensorConfigJson::TIMESTAMP_TAG ) )
-        );
-
         cJSON * enabled = cJSON_GetObjectItem( json, SensorConfigJson::ENABLED_TAG );
         if ( enabled && cJSON_IsBool( enabled ) ) config.enabled = cJSON_IsTrue( enabled );
 
@@ -131,8 +124,6 @@ namespace AsnPlus::Cloud
         toJson( config.conductivityConfig, condConfigJson );
         cJSON_AddItemToObject( json, ChannelConfigJson::COND_CONFIG_TAG, condConfigJson );
 
-        cJSON_AddNumberToObject( json, ChannelConfigJson::BEVERAGE_ID_TAG, config.beverageId );
-
         cJSON * classificationConfigs = cJSON_CreateArray();
         for ( uint8_t i = 0; i < Channel::Config::CLASSIFICATION_CONFIG_COUNT; ++i )
         {
@@ -183,10 +174,6 @@ namespace AsnPlus::Cloud
 
         cJSON * condConfigJson = cJSON_GetObjectItem( json, ChannelConfigJson::COND_CONFIG_TAG );
         if ( condConfigJson && cJSON_IsObject( condConfigJson ) ) fromJson( config.conductivityConfig, condConfigJson );
-
-        cJSON * beverageId = cJSON_GetObjectItem( json, ChannelConfigJson::BEVERAGE_ID_TAG );
-        if ( beverageId && cJSON_IsNumber( beverageId ) )
-            config.beverageId = static_cast< uint16_t >( beverageId->valuedouble );
 
         cJSON * classificationConfigs = cJSON_GetObjectItem( json, ChannelConfigJson::CLASSIFICATION_CONFIG_TAG );
         if ( classificationConfigs && cJSON_IsArray( classificationConfigs ) )

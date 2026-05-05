@@ -12,6 +12,7 @@ namespace AsnPlus::Cloud
         static constexpr const char TIME_CONFIG_TIMESTAMP_TAG[]       = "timeConfigTimestamp";
         static constexpr const char DEVICE_CONFIG_TIMESTAMP_TAG[]     = "deviceConfigTimestamp";
         static constexpr const char NETWORK_CONFIG_TIMESTAMP_TAG[]    = "networkConfigTimestamp";
+        static constexpr const char MQTT_CONFIG_TIMESTAMP_TAG[]       = "mqttConfigTimestamp";
         static constexpr const char CHANNEL_CONFIG_TIMESTAMPS_TAG[]   = "channelConfigTimestamps";
     }    // namespace StateResponseJson
 
@@ -28,6 +29,7 @@ namespace AsnPlus::Cloud
         uint64_t timeConfigTimestamp                      = 0;
         uint64_t deviceConfigTimestamp                    = 0;
         uint64_t networkConfigTimestamp                   = 0;
+        uint64_t mqttConfigTimestamp                      = 0;
         uint64_t channelConfigTimestamps[ CHANNEL_COUNT ] = { 0, 0, 0, 0 };
     };
 
@@ -44,6 +46,9 @@ namespace AsnPlus::Cloud
         );
         response.networkConfigTimestamp = static_cast< uint64_t >(
             cJSON_GetNumberValue( cJSON_GetObjectItem( json, StateResponseJson::NETWORK_CONFIG_TIMESTAMP_TAG ) )
+        );
+        response.mqttConfigTimestamp = static_cast< uint64_t >(
+            cJSON_GetNumberValue( cJSON_GetObjectItem( json, StateResponseJson::MQTT_CONFIG_TIMESTAMP_TAG ) )
         );
 
         cJSON * channelTimestamps = cJSON_GetObjectItem( json, StateResponseJson::CHANNEL_CONFIG_TIMESTAMPS_TAG );

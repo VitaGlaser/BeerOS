@@ -5,22 +5,23 @@
 #include "asn/asn-core/logger.hpp"
 #include "asn/asn-core/types.hpp"
 
-#include "asn/asn-esp32-wifi/netif.hpp"
+#include "asn/asn-esp32-wifi/include/netif.hpp"
 
-#include "asn/asn-esp32-wifi/https/client/https_client.hpp"
-#include "asn/asn-esp32-wifi/wifi_manager.hpp"
+#include "asn/asn-esp32-wifi/include/https/client.hpp"
+#include "asn/asn-esp32-wifi/old/wifi_manager.hpp"
 
-#include "asn/asn-esp32-wifi/ethernet/ethernet.hpp"
+#include "asn/asn-esp32-wifi/include/ethernet/ethernet.hpp"
 
-#include "asn/asn-eg915-driver/eg915.hpp"
-#include "asn/asn-eg915-driver/https/https_client.hpp"
+#include "asn/asn-eg915-driver/include/eg915.hpp"
+#include "asn/asn-eg915-driver/include/https/https_client.hpp"
 
-#include "asn/asn-esp32-ble/nimble.hpp"
-#include "asn/asn-esp32-ble/structs.hpp"
+#include "asn/asn-esp32-ble/include/nimble.hpp"
+#include "asn/asn-esp32-ble/include/structs.hpp"
 
 #include "components/cloud/request_manager.hpp"
+#include "components/mqtt/manager.hpp"
 
-#include "asn/asn-esp32-wifi/sntp_manager.hpp"
+#include "asn/asn-esp32-wifi/include/sntp/sntp.hpp"
 
 #include "database/database.hpp"
 
@@ -44,7 +45,8 @@ namespace AsnPlus::Connection
             Esp32::Https::Client &   wifiClient,
             Eg915 &                  lte,
             Eg915HttpsClient &       lteClient,
-            Cloud::RequestManager &  requestManager
+            Cloud::RequestManager &  requestManager,
+            Mqtt::Manager &          mqttManager
         ) :
             _connectionModuleConfig( connectionModuleConfig ),
             _connectionModuleRuntime( connectionModuleRuntime ),
@@ -58,7 +60,8 @@ namespace AsnPlus::Connection
             _wifiClient( wifiClient ),
             _lte( lte ),
             _lteClient( lteClient ),
-            _requestManager( requestManager )
+            _requestManager( requestManager ),
+            _mqttManager( mqttManager )
         {
         }
 
@@ -93,11 +96,9 @@ namespace AsnPlus::Connection
             // _nbIotClient.initialize();
 
             _requestManager.initialize();
+            _mqttManager.initialize();
 
             _sntpManager.initialize();
-
-            // TODO: Remove — one-shot HTTPS test
-            _lteHttpsTestDone = false;
 
             Log::info( "Initialized" );
             return true;
@@ -105,7 +106,6 @@ namespace AsnPlus::Connection
 
         void poll()
         {
-            Log::debug( "Poll" );
             _lte.poll();
             _wifiManager.poll();
 
@@ -119,21 +119,29 @@ namespace AsnPlus::Connection
 
             if ( network && ! _networkWasAvailable ) _sntpManager.notifyNetworkAvailable();
             _networkWasAvailable = network;
+        }
 
-            if ( network )
-            {
-                _setHttpsClient();
-                _requestManager.poll();
-            }
+        void httpsPoll()
+        {
+            if ( ! isNetworkAvailable() ) return;
+            _setHttpsClient();
+            _requestManager.poll();
+        }
+
+        void mqttPoll()
+        {
+            if ( ! isNetworkAvailable() ) return;
+            _mqttManager.poll();
         }
 
         bool isNetworkAvailable()
         {
             return (
                 _connectionModuleRuntime.wifiValue == State::CONNECTED ||
-                _connectionModuleRuntime.ethValue == State::CONNECTED ||
-                _connectionModuleRuntime.lteValue == State::CONNECTED ||
-                _connectionModuleRuntime.nbIotValue == State::CONNECTED
+                _connectionModuleRuntime.ethValue == State::CONNECTED
+                // ||
+                // _connectionModuleRuntime.lteValue == State::CONNECTED ||
+                // _connectionModuleRuntime.nbIotValue == State::CONNECTED
             );
         }
 
@@ -150,6 +158,7 @@ namespace AsnPlus::Connection
 
         Database & _database;
 
+        uint64_t            _bluetoothLastChangeTimestamp = 0;
         Bluetooth::State &  _bluetoothState;
         Bluetooth::Nimble & _nimble;
 
@@ -166,14 +175,25 @@ namespace AsnPlus::Connection
         Eg915HttpsClient & _lteClient;
 
         Cloud::RequestManager & _requestManager;
+        Mqtt::Manager &         _mqttManager;
 
-        Wifi::SntpManager _sntpManager { "pool.ntp.org" };
-        bool              _networkWasAvailable = false;
+        Wifi::Sntp _sntpManager { "pool.ntp.org" };
+        bool       _networkWasAvailable = false;
 
-        bool _lteHttpsTestDone                 = false;
+        enum class ActiveTransport : uint8_t
+        {
+            NONE,
+            ETH,
+            WIFI,
+            LTE
+        };
+        ActiveTransport _lastActiveTransport = ActiveTransport::NONE;
+
+        bool _lteHttpsTestDone               = false;
 
         void _btStateConversion()
         {
+            if ( _bluetoothState.timestamp == _bluetoothLastChangeTimestamp ) return;
             switch ( _bluetoothState.status )
             {
                 case Bluetooth::Status::DISCONNECTED:
@@ -197,36 +217,25 @@ namespace AsnPlus::Connection
                         break;
                     }
             }
+            _bluetoothLastChangeTimestamp = _bluetoothState.timestamp;
             Log::debug( "BT value: %d", _connectionModuleRuntime.btValue );
         }
 
-        // TODO (DK)
         void _ethStatusConversion()
         {
-            // switch (  )
-            // {
-            //     case State::DISCONNECTED:
-            //         {
-            //             _connectionModuleRuntime.ethValue = State::DISCONNECTED;
-            //             break;
-            //         }
-            //     case State::CONNECTING:
-            //         {
-            //             _connectionModuleRuntime.ethValue = State::CONNECTING;
-            //             break;
-            //         }
-            //     case State::CONNECTED:
-            //         {
-            //             _connectionModuleRuntime.ethValue = State::CONNECTED;
-            //             break;
-            //         }
-            //     default:
-            //         {
-            //             _connectionModuleRuntime.ethValue = State::UNKNOWN;
-            //             break;
-            //         }
-            // }
-            // Log::debug( "Ethernet value: %d", _connectionModuleRuntime.ethValue );
+            if ( ! _database.ethStaRuntime.linkUp )
+            {
+                _connectionModuleRuntime.ethValue = State::DISCONNECTED;
+            }
+            else if ( _database.ethRuntime.state == Network::W5500Ethernet::State::CONNECTED )
+            {
+                _connectionModuleRuntime.ethValue = State::CONNECTED;
+            }
+            else
+            {
+                _connectionModuleRuntime.ethValue = State::CONNECTING;
+            }
+            Log::debug( "Ethernet value: %d", _connectionModuleRuntime.ethValue );
         }
 
         void _wifiStatusConversion()
@@ -312,106 +321,45 @@ namespace AsnPlus::Connection
 
         void _setHttpsClient()
         {
-            if ( _connectionModuleRuntime.ethValue == State::CONNECTED ||
-                 _connectionModuleRuntime.wifiValue == State::CONNECTED )
+            if ( _connectionModuleRuntime.ethValue == State::CONNECTED )
             {
-                _requestManager.setClient( &_wifiClient );
+                if ( _lastActiveTransport != ActiveTransport::ETH )
+                {
+                    Log::debug( "Setting Ethernet client" );
+                    _requestManager.setClient( &_wifiClient );
+                    _requestManager.setStateTimerInterval( _database.networkConfig.requestConfig.ethStatusInterval );
+                    _lastActiveTransport = ActiveTransport::ETH;
+                }
             }
-            else if ( _connectionModuleRuntime.lteValue == State::CONNECTED )
+            else if ( _connectionModuleRuntime.wifiValue == State::CONNECTED )
             {
-                // Set LTE client
+                if ( _lastActiveTransport != ActiveTransport::WIFI )
+                {
+                    Log::debug( "Setting Wi-Fi client" );
+                    _requestManager.setClient( &_wifiClient );
+                    _requestManager.setStateTimerInterval( _database.networkConfig.requestConfig.wifiStatusInterval );
+                    _lastActiveTransport = ActiveTransport::WIFI;
+                }
             }
-            else if ( _connectionModuleRuntime.nbIotValue == State::CONNECTED )
-            {
-                // Set NB-IoT client
-            }
+            // else if ( _connectionModuleRuntime.lteValue == State::CONNECTED )
+            // {
+            //     if ( _lastActiveTransport != ActiveTransport::LTE )
+            //     {
+            //         Log::debug( "Setting LTE client" );
+            //         // _requestManager.setClient( &_lteClient );
+            //         _requestManager.setStateTimerInterval( _database.networkConfig.requestConfig.lteStatusInterval );
+            //         _lastActiveTransport = ActiveTransport::LTE;
+            //     }
+            // }
+            // else if ( _connectionModuleRuntime.nbIotValue == State::CONNECTED )
+            // {
+            //     Log::debug( "Setting NB-IoT client" );
+            // }
             else
             {
+                Log::debug( "No network connected, setting client to nullptr" );
                 _requestManager.setClient( nullptr );
-            }
-        }
-
-        // TODO: Remove — one-shot HTTPS test
-        void _testLteHttps()
-        {
-            if ( _lteHttpsTestDone ) return;
-            if ( _lte.getStatus() != IModem::Status::CONNECTED ) return;
-
-            _lteHttpsTestDone = true;
-            Log::info( "LTE connected — running HTTPS test" );
-
-            if ( ! _lteClient.initialize() )
-            {
-                Log::error( "LTE HTTPS client init failed" );
-                return;
-            }
-
-            static constexpr const char GET_URL[] =
-                "https://europe-north1-level-sensing-development.cloudfunctions.net/test";
-            static constexpr const char POST_URL[] =
-                "https://europe-north1-level-sensing-development.cloudfunctions.net/testPost";
-
-            static uint8_t response_buf[ 512 ];
-
-            // GET
-            {
-                Https::Response response {};
-                response.response     = response_buf;
-                response.responseSize = sizeof( response_buf );
-
-                Https::Request request {};
-                request.method  = Https::Method::GET;
-
-                uint16_t status = _lteClient.request( GET_URL, &request, &response );
-                Log::temp(
-                    "HTTPS GET result: status=%d, body_len=%lu",
-                    static_cast< int >( status ),
-                    static_cast< unsigned long >( response.responseSize )
-                );
-                if ( response.responseSize > 0 )
-                {
-                    response_buf
-                        [ response.responseSize < sizeof( response_buf ) ? response.responseSize
-                                                                         : sizeof( response_buf ) - 1 ] = '\0';
-                    Log::info( "GET response: %s", reinterpret_cast< const char * >( response_buf ) );
-                }
-            }
-
-            // POST
-            {
-                static char post_body[] =
-                    "{\"device\":\"revosoft-beerhouse\",\"firmware\":\"0.1.0\",\"sensor\":{\"flow\":1.23,\"volume\":456.78},\"status\":\"ok\"}";
-
-                static const Https::HeaderKeyValue post_headers[] = {
-                    { "Content-Type", "application/json" },
-                };
-                static Vector< Https::HeaderKeyValue, 1 > post_headers_vec;
-                post_headers_vec.clear();
-                post_headers_vec.push_back( post_headers[ 0 ] );
-
-                Https::Response response {};
-                response.response     = response_buf;
-                response.responseSize = sizeof( response_buf );
-
-                Https::Request request {};
-                request.method      = Https::Method::POST;
-                request.headers     = &post_headers_vec;
-                request.payload     = reinterpret_cast< uint8_t * >( post_body );
-                request.payloadSize = static_cast< uint32_t >( sizeof( post_body ) - 1 );
-
-                uint16_t status     = _lteClient.request( POST_URL, &request, &response );
-                Log::temp(
-                    "HTTPS POST result: status=%d, body_len=%lu",
-                    static_cast< int >( status ),
-                    static_cast< unsigned long >( response.responseSize )
-                );
-                if ( response.responseSize > 0 )
-                {
-                    response_buf
-                        [ response.responseSize < sizeof( response_buf ) ? response.responseSize
-                                                                         : sizeof( response_buf ) - 1 ] = '\0';
-                    Log::info( "POST response: %s", reinterpret_cast< const char * >( response_buf ) );
-                }
+                _lastActiveTransport = ActiveTransport::NONE;
             }
         }
     };

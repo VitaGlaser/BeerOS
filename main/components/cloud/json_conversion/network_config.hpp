@@ -4,9 +4,9 @@
 
 #include "asn/asn-core/types.hpp"
 
-#include "asn/asn-hal/common/common_structs.hpp"
+#include "asn/asn-hal/include/common/common_structs.hpp"
 
-#include "asn/asn-esp32-wifi/ethernet/ethernet.hpp"
+#include "asn/asn-esp32-wifi/include/ethernet/ethernet.hpp"
 
 #include "components/cloud/json_conversion/device_config.hpp"
 
@@ -35,7 +35,6 @@ namespace AsnPlus::Cloud
 
     namespace RequestConfigJson
     {
-        static constexpr const char TIMESTAMP_TAG[]                 = "timestamp";
         static constexpr const char ETH_EVENT_RETRY_INTERVAL_TAG[]  = "ethEventRetryInterval";
         static constexpr const char ETH_STATE_INTERVAL_TAG[]        = "ethStatusInterval";
         static constexpr const char WIFI_EVENT_RETRY_INTERVAL_TAG[] = "wifiEventRetryInterval";
@@ -70,13 +69,12 @@ namespace AsnPlus::Cloud
 
     struct RequestConfig
     {
-        uint64_t timestamp              = 0;
         uint32_t ethEventRetryInterval  = 0;
-        uint32_t ethStatusInterval      = 0;
+        uint32_t ethStatusInterval      = 20 * 1000;
         uint32_t wifiEventRetryInterval = 0;
-        uint32_t wifiStatusInterval     = 0;
+        uint32_t wifiStatusInterval     = 60 * 1000;
         uint32_t lteEventRetryInterval  = 0;
-        uint32_t lteStatusInterval      = 0;
+        uint32_t lteStatusInterval      = 5 * 60 * 1000;
     };
 
     struct NetworkConfig
@@ -164,7 +162,6 @@ namespace AsnPlus::Cloud
 
     void toJson( RequestConfig & config, cJSON * json )
     {
-        cJSON_AddNumberToObject( json, RequestConfigJson::TIMESTAMP_TAG, static_cast< double >( config.timestamp ) );
         cJSON_AddNumberToObject( json, RequestConfigJson::ETH_EVENT_RETRY_INTERVAL_TAG, config.ethEventRetryInterval );
         cJSON_AddNumberToObject( json, RequestConfigJson::ETH_STATE_INTERVAL_TAG, config.ethStatusInterval );
         cJSON_AddNumberToObject(
@@ -177,10 +174,6 @@ namespace AsnPlus::Cloud
 
     void fromJson( RequestConfig & config, cJSON * json )
     {
-        config.timestamp = static_cast< uint64_t >(
-            cJSON_GetNumberValue( cJSON_GetObjectItem( json, RequestConfigJson::TIMESTAMP_TAG ) )
-        );
-
         cJSON * ethEventRetry = cJSON_GetObjectItem( json, RequestConfigJson::ETH_EVENT_RETRY_INTERVAL_TAG );
         if ( ethEventRetry && cJSON_IsNumber( ethEventRetry ) )
             config.ethEventRetryInterval = static_cast< uint32_t >( ethEventRetry->valuedouble );

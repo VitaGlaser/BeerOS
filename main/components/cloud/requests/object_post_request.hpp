@@ -9,33 +9,30 @@
 #include "asn/asn-core/types.hpp"
 #include "asn/asn-core/vector.hpp"
 
-#include "asn/asn-esp32-wifi/https/client/ifirestore_request.hpp"
-
-#include "asn/asn-hal/common/common_structs.hpp"
+#include "firestore_request.hpp"
 
 namespace AsnPlus::Cloud
 {
     template< typename REQUEST, typename RESPONSE = REQUEST >
-    class ObjectPostRequest : public Esp32::Https::IFirestoreRequest
+    class ObjectPostRequest : public IFirestoreRequest
     {
     public:
         ObjectPostRequest(
-            REQUEST &                                 request,
-            RESPONSE &                                response,
-            Esp32::Https::IFirestoreRequest::Config & config,
-            IVector< uint8_t > &                      buffer,
-            IVector< uint8_t > &                      responseBuffer,
-            Delegate< void() >                        onUpdate
+            REQUEST &                   req,
+            RESPONSE &                  response,
+            IFirestoreRequest::Config & config,
+            IVector< uint8_t > &        buffer,
+            IVector< uint8_t > &        responseBuffer,
+            Delegate< void() >          onUpdate
         ) :
             IFirestoreRequest( config ),
             _config( config ),
-            _request( request ),
+            _request( req ),
             _response( response ),
             _buffer( buffer ),
             _responseBuffer( responseBuffer ),
             _onUpdate( onUpdate )
         {
-            _config.method = Esp32::Https::IClient::Method::POST;
         }
 
         bool initialize() override
@@ -47,9 +44,9 @@ namespace AsnPlus::Cloud
                 sizeof( _url ),
                 _config.baseUrl,
                 _config.moduleUrl,
-                _config.uuid,
+                _config.uid,
                 ManufactureInfo::UID_LENGTH,
-                NULL
+                nullptr
             );
 
             return true;
@@ -79,28 +76,32 @@ namespace AsnPlus::Cloud
                 return false;
             }
 
-            const uint32_t requestLen = strlen( reinterpret_cast< char * >( _buffer.data() ) );
-            char           request_label[ 64 ];
-            snprintf( request_label, sizeof( request_label ), "Request [%s]", _config.moduleUrl );
-            Log::hexdump( request_label, _buffer.data(), requestLen );
+            const size_t requestLen = strlen( reinterpret_cast< char * >( _buffer.data() ) );
+            const auto * bufData    = reinterpret_cast< const uint8_t * >( _buffer.data() );
+            _buffer.assign( bufData, bufData + requestLen );
+
+            char requestLabel[ 64 ];
+            snprintf( requestLabel, sizeof( requestLabel ), "Request [%s]", _config.moduleUrl );
+            Log::hexdump( requestLabel, _buffer.data(), _buffer.size() );
             cJSON_Delete( root );
 
-            _responseBuffer.resize( _responseBuffer.capacity() );
-            uint32_t responseLen = static_cast< uint32_t >( _responseBuffer.size() );
+            _responseBuffer.clear();
+            Https::Request  httpReq { .method = Https::Method::POST, .payload = &_buffer };
+            Https::Response resp    { .response = &_responseBuffer };
 
-            uint32_t ret = request( nullptr, 0, _buffer.data(), requestLen, _responseBuffer.data(), responseLen );
+            uint16_t status = request( &httpReq, &resp );
 
-            if ( ret != 200 )
+            if ( status != 200 )
             {
-                Log::error( "Request (%s) failed with status code %d", _url, ret );
+                Log::error( "Request (%s) failed with status code %d", _url, status );
                 return false;
             }
 
-            if ( responseLen == 0 ) return true;
+            if ( _responseBuffer.empty() ) return true;
 
-            char response_label[ 64 ];
-            snprintf( response_label, sizeof( response_label ), "Response [%s]", _config.moduleUrl );
-            Log::hexdump( response_label, _responseBuffer.data(), responseLen );
+            char responseLabel[ 64 ];
+            snprintf( responseLabel, sizeof( responseLabel ), "Response [%s]", _config.moduleUrl );
+            Log::hexdump( responseLabel, _responseBuffer.data(), _responseBuffer.size() );
 
             cJSON * responseJson = cJSON_Parse( reinterpret_cast< char * >( _responseBuffer.data() ) );
             if ( ! responseJson )
@@ -109,9 +110,9 @@ namespace AsnPlus::Cloud
                 return false;
             }
 
-            const uint64_t old_timestamp = _response.timestamp;
+            const uint64_t oldTimestamp = _response.timestamp;
             _response.fromJson( responseJson );
-            if ( _response.timestamp != old_timestamp )
+            if ( _response.timestamp != oldTimestamp )
             {
                 _onUpdate();
             }
@@ -124,7 +125,7 @@ namespace AsnPlus::Cloud
         static constexpr const char TAG[] = "ObjectPostRequest";
         using Log                         = Logger< ProjectConfig::LOG_LEVEL_CLOUD_REQUESTS, TAG >;
 
-        Esp32::Https::IFirestoreRequest::Config & _config;
+        IFirestoreRequest::Config & _config;
 
         REQUEST &            _request;
         RESPONSE &           _response;

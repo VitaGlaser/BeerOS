@@ -4,7 +4,7 @@
 
 #include "asn/asn-core/types.hpp"
 
-#include "asn/asn-hal/common/identification_structs.hpp"
+#include "asn/asn-hal/include/common/identification_structs.hpp"
 
 namespace AsnPlus::Cloud
 {
@@ -12,7 +12,7 @@ namespace AsnPlus::Cloud
     {
         static constexpr const char TIMESTAMP_TAG[] = "timestamp";
         static constexpr const char OWNER_ID_TAG[]  = "ownerId";
-        static constexpr const char ORG_ID_TAG[]    = "orgId";
+        static constexpr const char ORG_ID_TAG[]    = "organizationId";
     }    // namespace DeviceConfigJson
 
     struct DeviceConfig
