@@ -71,7 +71,7 @@ namespace AsnPlus
         AdvertisingData   advertisingData {};
         Bluetooth::Config bluetoothConfig {};
         Bluetooth::State  bluetoothState {};
-        Wifi::WifiConfig  wifiConfig {};
+        Wifi::LegacyWifiConfig  wifiConfig {};
 
         Network::W5500Sta::Runtime ethStaRuntime {};
 

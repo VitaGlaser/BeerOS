@@ -181,15 +181,23 @@ namespace AsnPlus
             switch ( channel.getConfig().pressureType )
             {
                 case Channel::Config::PressureType::ANALOG:
-                    break;
+                    {
+                        const auto port = static_cast< uint8_t >( channel.getConfig().pressureConfig.id - 1 );
+                        _dataSourceManager.bindPressureAnalogToAdcChannel( index, port );
+                        break;
+                    }
                 case Channel::Config::PressureType::UNKNOWN:
-                    break;
+                    {
+                        _dataSourceManager.unbindPressureAnalogAdcChannel( index );
+                        break;
+                    }
                 default:
                     {
                         Log::error(
                             "Unsupported pressure type for enabling: %d",
                             static_cast< uint8_t >( channel.getConfig().pressureType )
                         );
+                        _dataSourceManager.unbindPressureAnalogAdcChannel( index );
                         break;
                     }
             }

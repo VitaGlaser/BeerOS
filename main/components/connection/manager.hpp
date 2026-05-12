@@ -8,7 +8,7 @@
 #include "asn/asn-esp32-wifi/include/netif.hpp"
 
 #include "asn/asn-esp32-wifi/include/https/client.hpp"
-#include "asn/asn-esp32-wifi/old/wifi_manager.hpp"
+#include "components/wifi/manager_adapter.hpp"
 
 #include "asn/asn-esp32-wifi/include/ethernet/ethernet.hpp"
 
@@ -40,7 +40,7 @@ namespace AsnPlus::Connection
             Bluetooth::Nimble &      nimble,
             Network::W5500Ethernet & ethernet,
             Esp32::Https::Client &   ethClient,
-            Wifi::WifiConfig &       wifiConfig,
+            Wifi::LegacyWifiConfig & wifiConfig,
             Wifi::WifiManager &      wifiManager,
             Esp32::Https::Client &   wifiClient,
             Eg915 &                  lte,
@@ -74,9 +74,9 @@ namespace AsnPlus::Connection
 
             Esp32::Netif::initialize();
 
-            _ethernet.initialize();
-            _ethernet.start();
-            _ethClient.initialize();
+            // _ethernet.initialize();
+            // _ethernet.start();
+            // _ethClient.initialize();
 
             _wifiManager.initialize();
             _wifiClient.initialize();
@@ -90,13 +90,13 @@ namespace AsnPlus::Connection
                 Wifi::PASSWORD_LENGTH
             );
 
-            _lte.initialize();
+            // _lte.initialize();
 
             // _nbIot.initialize();
             // _nbIotClient.initialize();
 
             _requestManager.initialize();
-            _mqttManager.initialize();
+            // _mqttManager.initialize();
 
             _sntpManager.initialize();
 
@@ -110,9 +110,9 @@ namespace AsnPlus::Connection
             _wifiManager.poll();
 
             _btStateConversion();
-            _ethStatusConversion();
+            // _ethStatusConversion();
             _wifiStatusConversion();
-            _lteStatusConversion();
+            // _lteStatusConversion();
             _nbIotStateConversion();
 
             const bool network = isNetworkAvailable();
@@ -165,8 +165,8 @@ namespace AsnPlus::Connection
         Network::W5500Ethernet & _ethernet;
         Esp32::Https::Client &   _ethClient;
 
-        Wifi::WifiConfig &  _wifiConfig;
-        Wifi::WifiManager & _wifiManager;
+        Wifi::LegacyWifiConfig & _wifiConfig;
+        Wifi::WifiManager &      _wifiManager;
 
         Esp32::Https::Client & _wifiClient;
 

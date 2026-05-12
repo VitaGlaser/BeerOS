@@ -259,12 +259,15 @@ namespace AsnPlus
             switch ( _config.pressureType )
             {
                 case Config::PressureType::ANALOG:
-                    // if ( auto dataSource = _dataSourceManager.getAnalogPressureDataSource( _config.pressureConfig.id
-                    // ) )
-                    // {
-                    //     _pressure.bindDataSource( *dataSource );
-                    // }
-                    // break;
+                    {
+                        auto * dataSource = _dataSourceManager.getPressureAnalogDataSource( index );
+                        if ( dataSource )
+                        {
+                            Log::debug( " (%u) Binding analog pressure sensor data source (index %u)", _index, index );
+                            _pressure.bindDataSource( *dataSource );
+                        }
+                        break;
+                    }
                 case Config::PressureType::UNKNOWN:
                     _pressure.unbindDataSource();
                     break;

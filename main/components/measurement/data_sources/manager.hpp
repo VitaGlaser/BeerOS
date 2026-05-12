@@ -7,6 +7,7 @@
 #include "asn/asn-core/types.hpp"
 
 #include "asn/asn-esp32-modbus/include/master.hpp"
+#include "asn/asn-expander-lib/include/adc/adc.hpp"
 #include "asn/asn-expander-lib/include/timer/timer.hpp"
 
 #include "flow_modbus.hpp"
@@ -26,10 +27,12 @@ namespace AsnPlus::DataSource
         static constexpr uint16_t DEFAULT_PULSES_PER_LITRE = 236;
 
         using PulseChannels = Array< Expander::Timers::Timer::Channel, NUM_CHANNELS >;
+        using AdcChannels   = Array< Expander::Adc::Adc::Channel, NUM_CHANNELS >;
 
-        Manager( Modbus::RtuMaster & modbusMaster, PulseChannels & channels ) :
+        Manager( Modbus::RtuMaster & modbusMaster, PulseChannels & channels, AdcChannels & adcChannels ) :
             _modbusMaster( modbusMaster ),
             _timerChannels( channels ),
+            _adcChannels( adcChannels ),
             _flowModbusArray { { { modbusMaster }, { modbusMaster }, { modbusMaster }, { modbusMaster } } },
             _flowPulseArray {
                 { { DEFAULT_PULSES_PER_LITRE },
@@ -155,6 +158,24 @@ namespace AsnPlus::DataSource
             _flowPulseArray[ channel_index ].unbindTimerChannel();
         }
 
+        void bindPressureAnalogToAdcChannel( uint8_t channel_index, uint8_t port )
+        {
+            if ( channel_index >= NUM_CHANNELS || port >= NUM_CHANNELS )
+            {
+                Log::error( "Invalid channel_index %u or port %u for PressureAnalog binding", channel_index, port );
+                return;
+            }
+            _pressureAnalogArray[ channel_index ].bindAdcChannel( _adcChannels[ port ] );
+            _pressureAnalogArray[ channel_index ].enable();
+        }
+
+        void unbindPressureAnalogAdcChannel( uint8_t channel_index )
+        {
+            if ( channel_index >= NUM_CHANNELS ) return;
+            _pressureAnalogArray[ channel_index ].disable();
+            _pressureAnalogArray[ channel_index ].unbindAdcChannel();
+        }
+
         TemperatureModbus * getTemperatureModbusDataSource( uint8_t index )
         {
             if ( index >= NUM_CHANNELS )
@@ -239,6 +260,7 @@ namespace AsnPlus::DataSource
 
         Modbus::RtuMaster & _modbusMaster;
         PulseChannels       _timerChannels;
+        AdcChannels         _adcChannels;
 
         Array< FlowModbus, NUM_CHANNELS >          _flowModbusArray;
         Array< FlowPulse, NUM_CHANNELS >           _flowPulseArray;
