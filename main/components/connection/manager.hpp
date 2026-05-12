@@ -74,9 +74,9 @@ namespace AsnPlus::Connection
 
             Esp32::Netif::initialize();
 
-            // _ethernet.initialize();
-            // _ethernet.start();
-            // _ethClient.initialize();
+            _ethernet.initialize();
+            _ethernet.start();
+            _ethClient.initialize();
 
             _wifiManager.initialize();
             _wifiClient.initialize();
@@ -96,7 +96,7 @@ namespace AsnPlus::Connection
             // _nbIotClient.initialize();
 
             _requestManager.initialize();
-            // _mqttManager.initialize();
+            _mqttManager.initialize();
 
             _sntpManager.initialize();
 
@@ -110,9 +110,9 @@ namespace AsnPlus::Connection
             _wifiManager.poll();
 
             _btStateConversion();
-            // _ethStatusConversion();
+            _ethStatusConversion();
             _wifiStatusConversion();
-            // _lteStatusConversion();
+            _lteStatusConversion();
             _nbIotStateConversion();
 
             const bool network = isNetworkAvailable();
