@@ -214,30 +214,30 @@ namespace AsnPlus
 
             database.initialize();
 
-            // i2cMaster.initialize();
-            // timeManager.initialize();
+            i2cMaster.initialize();
+            timeManager.initialize();
 
-            // lteUart.initialize();
-            // _initializeLteTask();
+            lteUart.initialize();
+            _initializeLteTask();
 
-            // _initializeExpander();
-            // expander.poll();
+            _initializeExpander();
+            expander.poll();
 
-            // lte.setPowerKeyGpio( ltePower );
+            lte.setPowerKeyGpio( ltePower );
             connectionManager.initialize();
 
-            // rtuMaster.initialize();
+            rtuMaster.initialize();
 
-            // dataSourceManager.initialize();
-            // channelManager.initialize();
-            // historyManager.initialize();
+            dataSourceManager.initialize();
+            channelManager.initialize();
+            historyManager.initialize();
 
-            // ledStrip.initialize();
-            // for ( int i = 0; i < 16; i += 2 ) ledStrip.setColor( i + 1, Color { 77, 0, 255 } );
-            // ledStrip.poll();
-            // Utils::delay( 1000 );
-            // ledStrip.clear_all();
-            // ledStrip.poll();
+            ledStrip.initialize();
+            for ( int i = 0; i < 16; i += 2 ) ledStrip.setColor( i + 1, Color { 77, 0, 255 } );
+            ledStrip.poll();
+            Utils::delay( 1000 );
+            ledStrip.clear_all();
+            ledStrip.poll();
 
             _initializeTasks();
 
@@ -415,9 +415,9 @@ namespace AsnPlus
 
             // expander.getPortA().enable();
             expander.getPortB().enable();
-            
+
             expander.getAdc().setSamplingFrequency( Expander::Adc::ADCCTRL::SamplingFrequency::SMP1 );
-            
+
             adcChannel1.setPhysicalChannel( Expander::Adc::ADCMxCFG::ChannelSelect::CH1 );
             adcChannel1.setFilter( Expander::Adc::ADCMxCFG::LPFrequency::LPF20K );
             adcChannel2.setPhysicalChannel( Expander::Adc::ADCMxCFG::ChannelSelect::CH2 );
@@ -426,7 +426,7 @@ namespace AsnPlus
             adcChannel3.setFilter( Expander::Adc::ADCMxCFG::LPFrequency::LPF20K );
             adcChannel4.setPhysicalChannel( Expander::Adc::ADCMxCFG::ChannelSelect::CH8 );
             adcChannel4.setFilter( Expander::Adc::ADCMxCFG::LPFrequency::LPF20K );
-            
+
             expander.getAdc().startCalibration();
             expander.getAdc().waitCalibration();
             expander.getAdc().enable();
@@ -516,32 +516,32 @@ namespace AsnPlus
 
         void _initializeTasks()
         {
-            // if ( xTaskCreatePinnedToCore(
-            //          componentsTask, "componentsTask", 4 * 1024, this, COMPONENTS_TASK_PRIORITY, NULL, 1
-            //      ) != pdPASS )
-            // {
-            //     Log::error( "Failed to create components task" );
-            // }
+            if ( xTaskCreatePinnedToCore(
+                     componentsTask, "componentsTask", 4 * 1024, this, COMPONENTS_TASK_PRIORITY, NULL, 1
+                 ) != pdPASS )
+            {
+                Log::error( "Failed to create components task" );
+            }
 
-            // if ( xTaskCreatePinnedToCore( systemTask, "systemTask", 4 * 1024, this, SYSTEM_TASK_PRIORITY, NULL, 1 ) !=
-            //      pdPASS )
-            // {
-            //     Log::error( "Failed to create system task" );
-            // }
+            if ( xTaskCreatePinnedToCore( systemTask, "systemTask", 4 * 1024, this, SYSTEM_TASK_PRIORITY, NULL, 1 ) !=
+                 pdPASS )
+            {
+                Log::error( "Failed to create system task" );
+            }
 
-            // if ( xTaskCreatePinnedToCore(
-            //          dataSourceTask, "dataSourceTask", 4 * 1024, this, DATA_SOURCE_TASK_PRIORITY, NULL, 1
-            //      ) != pdPASS )
-            // {
-            //     Log::error( "Failed to create data source task" );
-            // }
+            if ( xTaskCreatePinnedToCore(
+                     dataSourceTask, "dataSourceTask", 4 * 1024, this, DATA_SOURCE_TASK_PRIORITY, NULL, 1
+                 ) != pdPASS )
+            {
+                Log::error( "Failed to create data source task" );
+            }
 
-            // if ( xTaskCreatePinnedToCore(
-            //          controlTask, "controlTask", 8 * 1024, this, CONTROL_TASK_PRIORITY, NULL, 1
-            //      ) != pdPASS )
-            // {
-            //     Log::error( "Failed to create control task" );
-            // }
+            if ( xTaskCreatePinnedToCore(
+                     controlTask, "controlTask", 8 * 1024, this, CONTROL_TASK_PRIORITY, NULL, 1
+                 ) != pdPASS )
+            {
+                Log::error( "Failed to create control task" );
+            }
 
             if ( xTaskCreatePinnedToCore(
                      communicationTask, "communicationTask", 12 * 1024, this, COMMUNICATION_TASK_PRIORITY, NULL, 0
@@ -550,11 +550,11 @@ namespace AsnPlus
                 Log::error( "Failed to create communication task" );
             }
 
-            // if ( xTaskCreatePinnedToCore( mqttTask, "mqttTask", 4 * 1024, this, MQTT_TASK_PRIORITY, NULL, 0 ) !=
-            //      pdPASS )
-            // {
-            //     Log::error( "Failed to create mqtt task" );
-            // }
+            if ( xTaskCreatePinnedToCore( mqttTask, "mqttTask", 4 * 1024, this, MQTT_TASK_PRIORITY, NULL, 0 ) !=
+                 pdPASS )
+            {
+                Log::error( "Failed to create mqtt task" );
+            }
         }
     };
 }    // namespace AsnPlus
