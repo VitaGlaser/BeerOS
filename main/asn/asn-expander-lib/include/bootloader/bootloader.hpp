@@ -1,11 +1,15 @@
 #pragma once
 
-#include "transport.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <sstream>
 #include <string.h>
+
+namespace AsnPlus::Expander
+{
+    class Transport;
+}
 
 namespace AsnPlus::Stm32Bootloader
 {
@@ -30,7 +34,7 @@ namespace AsnPlus::Stm32Bootloader
             Bank2,
         };
 
-        Bootloader( BootloaderTransport & transport );
+        Bootloader( Expander::Transport & transport );
 
         bool synchronizeWithBootloader();
         bool readAddress( uint32_t address, uint8_t * data, uint16_t length );
@@ -41,7 +45,7 @@ namespace AsnPlus::Stm32Bootloader
     private:
         static constexpr uint16_t INTERNAL_BUFFER_SIZE = 1024;
 
-        BootloaderTransport & _transport;
+        Expander::Transport & _transport;
 
         uint8_t  _internalSendBuffer[ INTERNAL_BUFFER_SIZE + 1 ];
         uint16_t _internalSendBufferCounter = 0;

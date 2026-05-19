@@ -26,6 +26,8 @@ namespace AsnPlus::Esp32
             gpio_num_t        miso;
         };
 
+        SpiMaster( Config & config ) : ISpiMaster( config ), _config( config ) {}
+
         bool initialize() override;
 
         int32_t write( uint8_t slaveId, const uint8_t * data, size_t len, uint32_t timeout ) override;

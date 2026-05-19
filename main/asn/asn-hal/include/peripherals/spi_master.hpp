@@ -18,10 +18,10 @@ namespace AsnPlus
 
         virtual bool initialize()                                                                     = 0;
 
-        virtual int32_t write( uint8_t slavePin, const uint8_t * data, size_t len, uint32_t timeout ) = 0;
-        virtual int32_t read( uint8_t slavePin, uint8_t * data, size_t len, uint32_t timeout )        = 0;
+        virtual int32_t write( uint8_t slaveId, const uint8_t * data, size_t len, uint32_t timeout ) = 0;
+        virtual int32_t read( uint8_t slaveId, uint8_t * data, size_t len, uint32_t timeout )        = 0;
         virtual int32_t transfer(
-            uint8_t         slavePin,
+            uint8_t         slaveId,
             const uint8_t * writeData,
             size_t          writeLen,
             uint8_t *       readData,
@@ -33,8 +33,8 @@ namespace AsnPlus
         static constexpr const char TAG[] = "ISpiMaster";
         Config &                    _config;
 
-        virtual void _selectSlave( uint8_t slavePin )   = 0;
-        virtual void _deselectSlave( uint8_t slavePin ) = 0;
+        virtual void _selectSlave( uint8_t slaveId )   = 0;
+        virtual void _deselectSlave( uint8_t slaveId ) = 0;
 
     private:
     };

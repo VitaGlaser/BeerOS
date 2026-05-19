@@ -25,9 +25,23 @@ namespace AsnPlus::Expander
         IRegisterContext & operator=( const IRegisterContext & ) = delete;
         IRegisterContext & operator=( IRegisterContext && )      = delete;
 
-        uint16_t readRegister( uint16_t address ) { return _transport.readRegister( address ); }
+        uint16_t readRegister( uint16_t address ) 
+        {
+            uint16_t value = 0;
+            bool ok = _transport.readRegister( address, value );
+            if (!ok) {
+                //TODO: error handling
+            }
+            return value;  
+        }
 
-        void writeRegister( uint16_t address, uint16_t data ) { _transport.writeRegister( address, data ); }
+        void writeRegister( uint16_t address, uint16_t data ) 
+        { 
+            bool ok = _transport.writeRegister( address, data ); 
+            if (!ok) {
+                // TODO: error handling
+            }
+        }
 
         virtual void attach( U16Register & reg ) = 0;
 

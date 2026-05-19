@@ -14,7 +14,7 @@ namespace AsnPlus::Expander
         void     poll();
         void     loadInitial();
         void     getVersion( uint8_t & major, uint8_t & minor, uint16_t & patch );
-        uint16_t getSignature();
+        uint32_t getSignature();
         void     requestBootloader();
         void     reset();
         void     shutdown();

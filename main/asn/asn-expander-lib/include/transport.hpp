@@ -1,27 +1,35 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 namespace AsnPlus ::Expander
 {
-    class Transport
+class Transport
     {
     public:
-        Transport()                                                       = default;
-        ~Transport()                                                      = default;
+        Transport()                                                                               = default;
+        ~Transport()                                                                              = default;
 
-        Transport( const Transport & )                                    = delete;
-        Transport( Transport && )                                         = delete;
-        Transport & operator=( const Transport & )                        = delete;
-        Transport & operator=( Transport && )                             = delete;
+        Transport( const Transport & )                                                            = delete;
+        Transport( Transport && )                                                                 = delete;
+        Transport & operator=( const Transport & )                                                = delete;
+        Transport & operator=( Transport && )                                                     = delete;
 
-        virtual uint16_t readRegister( uint16_t address )                 = 0;
-        virtual void     writeRegister( uint16_t address, uint16_t data ) = 0;
+        virtual bool readRegister( uint16_t address, uint16_t & data )                            = 0;
+        virtual bool readRegisters( uint16_t startAddress, uint16_t * data, size_t count )        = 0;
+        virtual bool writeRegister( uint16_t address, uint16_t data )                             = 0;
+        virtual bool writeRegisters( uint16_t startAddress, const uint16_t * data, size_t count ) = 0;
 
-    protected:
-        static constexpr uint32_t DEFAULT_TIMEOUT_MS = 1000;
+        virtual bool synchronizeWithBootlaoder() { return true; }
 
-    private:
+        virtual bool startCommand()                                  = 0;
+        // virtual bool              readStatus( uint8_t & status )                  = 0;
+        virtual bool sendData( const uint8_t * data, size_t length ) = 0;
+        virtual bool receiveData( uint8_t * buffer, size_t length )  = 0;
+        virtual bool waitAck()                                       = 0;
+
+        virtual bool useNoStretchCommands() const { return false; }
     };
 
 }    // namespace AsnPlus::Expander

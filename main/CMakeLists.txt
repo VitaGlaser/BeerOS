@@ -18,31 +18,49 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/build_info.h"
 "#define BUILD_TIMESTAMP_MS ${BUILD_TIME_MS}\n"
 )
 
-add_subdirectory(asn/asn-core)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-core)
+    add_subdirectory(asn/asn-core)
+endif()
 
-add_subdirectory(asn/asn-hal)
-target_link_libraries(${COMPONENT_LIB} PRIVATE AsnPlus::Hal)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-hal)
+    add_subdirectory(asn/asn-hal)
+    target_link_libraries(${COMPONENT_LIB} PRIVATE AsnPlus::Hal)
+endif()
 
-add_subdirectory(asn/asn-esp32-hal)
-target_link_libraries(${COMPONENT_LIB} PRIVATE AsnPlus::Esp32Hal)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-esp32-hal)
+    add_subdirectory(asn/asn-esp32-hal)
+    target_link_libraries(${COMPONENT_LIB} PRIVATE AsnPlus::Esp32Hal)
+endif()
 
-add_subdirectory(asn/asn-esp32-ble)
-target_link_libraries(${COMPONENT_LIB} PRIVATE AsnPlus::Esp32Ble)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-esp32-ble)
+    add_subdirectory(asn/asn-esp32-ble)
+    target_link_libraries(${COMPONENT_LIB} PRIVATE AsnPlus::Esp32Ble)
+endif()
 
-add_subdirectory(asn/asn-esp32-wifi)
-target_link_libraries(${COMPONENT_LIB} PRIVATE AsnPlus::Esp32Wifi)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-esp32-wifi)
+    add_subdirectory(asn/asn-esp32-wifi)
+    target_link_libraries(${COMPONENT_LIB} PRIVATE AsnPlus::Esp32Wifi)
+endif()
 
-add_subdirectory(asn/asn-esp32-modbus)
-target_link_libraries(${COMPONENT_LIB} PRIVATE AsnPlus::Esp32Modbus)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-esp32-modbus)
+    add_subdirectory(asn/asn-esp32-modbus)
+    target_link_libraries(${COMPONENT_LIB} PRIVATE AsnPlus::Esp32Modbus)
+endif()
 
-add_subdirectory(asn/asn-eg915-driver)
-target_link_libraries(${COMPONENT_LIB} PRIVATE AsnPlus::Eg915Driver)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-eg915-driver)
+    add_subdirectory(asn/asn-eg915-driver)
+    target_link_libraries(${COMPONENT_LIB} PRIVATE AsnPlus::Eg915Driver)
+endif()
 
-add_subdirectory(asn/asn-expander-lib)
-target_link_libraries(${COMPONENT_LIB} PRIVATE AsnPlus::ExpanderLib)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-expander-lib)
+    add_subdirectory(asn/asn-expander-lib)
+    target_link_libraries(${COMPONENT_LIB} PRIVATE AsnPlus::ExpanderLib)
+endif()
 
-add_subdirectory(asn/asn-drivers)
-target_link_libraries(${COMPONENT_LIB} PRIVATE AsnPlus::Drivers)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-drivers)
+    add_subdirectory(asn/asn-drivers)
+    target_link_libraries(${COMPONENT_LIB} PRIVATE AsnPlus::Drivers)
+endif()
 
 include(GNUInstallDirs)
 
@@ -277,11 +295,13 @@ install(
         PATTERN "*.h"
 )
 
-install(
-    FILES "$<TARGET_FILE:asn_drivers>"
-    DESTINATION "main/asn/asn-drivers/lib"
-    COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
-)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-drivers)
+    install(
+        FILES "$<TARGET_FILE:asn_drivers>"
+        DESTINATION "main/asn/asn-drivers/lib"
+        COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
+    )
+endif()
 
 install(
     FILES "${ASN_EXPORT_CMAKE_DIR}/asn-drivers-CMakeLists.txt"
@@ -299,23 +319,25 @@ install(
         PATTERN "*.h"
 )
 
-install(
-    FILES "${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-expander-lib/asn-expander-firmware.bin"
-    DESTINATION "main/asn/asn-expander-lib"
-    COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
-)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-expander-lib)
+    install(
+        FILES "${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-expander-lib/asn-expander-firmware.bin"
+        DESTINATION "main/asn/asn-expander-lib"
+        COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
+    )
 
-install(
-    FILES "$<TARGET_FILE:asn_expander_lib>"
-    DESTINATION "main/asn/asn-expander-lib/lib"
-    COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
-)
+    install(
+        FILES "$<TARGET_FILE:asn_expander_lib>"
+        DESTINATION "main/asn/asn-expander-lib/lib"
+        COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
+    )
 
-install(
-    FILES "$<TARGET_FILE:asn_expander_data>"
-    DESTINATION "main/asn/asn-expander-lib/lib"
-    COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
-)
+    install(
+        FILES "$<TARGET_FILE:asn_expander_data>"
+        DESTINATION "main/asn/asn-expander-lib/lib"
+        COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
+    )
+endif()
 
 install(
     FILES "${ASN_EXPORT_CMAKE_DIR}/asn-expander-lib-CMakeLists.txt"
@@ -333,11 +355,13 @@ install(
         PATTERN "*.h"
 )
 
-install(
-    FILES "$<TARGET_FILE:asn_esp32_modbus>"
-    DESTINATION "main/asn/asn-esp32-modbus/lib"
-    COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
-)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-esp32-modbus)
+    install(
+        FILES "$<TARGET_FILE:asn_esp32_modbus>"
+        DESTINATION "main/asn/asn-esp32-modbus/lib"
+        COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
+    )
+endif()
 
 install(
     FILES "${ASN_EXPORT_CMAKE_DIR}/asn-esp32-modbus-CMakeLists.txt"
@@ -355,17 +379,19 @@ install(
         PATTERN "*.h"
 )
 
-install(
-    FILES "${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-eg915-driver/at_parser_config.hpp"
-    DESTINATION "main/asn/asn-eg915-driver"
-    COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
-)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-eg915-driver)
+    install(
+        FILES "${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-eg915-driver/at_parser_config.hpp"
+        DESTINATION "main/asn/asn-eg915-driver"
+        COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
+    )
 
-install(
-    FILES "$<TARGET_FILE:asn_eg915_driver>"
-    DESTINATION "main/asn/asn-eg915-driver/lib"
-    COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
-)
+    install(
+        FILES "$<TARGET_FILE:asn_eg915_driver>"
+        DESTINATION "main/asn/asn-eg915-driver/lib"
+        COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
+    )
+endif()
 
 install(
     FILES "${ASN_EXPORT_CMAKE_DIR}/asn-eg915-driver-CMakeLists.txt"
@@ -383,11 +409,13 @@ install(
         PATTERN "*.h"
 )
 
-install(
-    FILES "$<TARGET_FILE:asn_at_parser>"
-    DESTINATION "main/asn/asn-eg915-driver/asn-at-parser/lib"
-    COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
-)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-eg915-driver)
+    install(
+        FILES "$<TARGET_FILE:asn_at_parser>"
+        DESTINATION "main/asn/asn-eg915-driver/asn-at-parser/lib"
+        COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
+    )
+endif()
 
 install(
     FILES "${ASN_EXPORT_CMAKE_DIR}/asn-eg915-driver-asn-at-parser-CMakeLists.txt"
@@ -402,11 +430,13 @@ install(
     COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
 )
 
-install(
-    FILES "$<TARGET_FILE:asn_hal>"
-    DESTINATION "main/asn/asn-hal/lib"
-    COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
-)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-hal)
+    install(
+        FILES "$<TARGET_FILE:asn_hal>"
+        DESTINATION "main/asn/asn-hal/lib"
+        COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
+    )
+endif()
 
 install(
     FILES "${ASN_EXPORT_CMAKE_DIR}/asn-hal-CMakeLists.txt"
@@ -430,11 +460,13 @@ install(
         PATTERN "*.h"
 )
 
-install(
-    FILES "$<TARGET_FILE:asn_esp32_hal>"
-    DESTINATION "main/asn/asn-esp32-hal/lib"
-    COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
-)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-esp32-hal)
+    install(
+        FILES "$<TARGET_FILE:asn_esp32_hal>"
+        DESTINATION "main/asn/asn-esp32-hal/lib"
+        COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
+    )
+endif()
 
 install(
     FILES "${ASN_EXPORT_CMAKE_DIR}/asn-esp32-hal-CMakeLists.txt"
@@ -449,11 +481,13 @@ install(
     COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
 )
 
-install(
-    FILES "$<TARGET_FILE:asn_esp32_ble>"
-    DESTINATION "main/asn/asn-esp32-ble/lib"
-    COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
-)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-esp32-ble)
+    install(
+        FILES "$<TARGET_FILE:asn_esp32_ble>"
+        DESTINATION "main/asn/asn-esp32-ble/lib"
+        COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
+    )
+endif()
 
 install(
     FILES "${ASN_EXPORT_CMAKE_DIR}/asn-esp32-ble-CMakeLists.txt"
@@ -477,11 +511,13 @@ install(
         PATTERN "*.h"
 )
 
-install(
-    FILES "$<TARGET_FILE:asn_esp32_wifi>"
-    DESTINATION "main/asn/asn-esp32-wifi/lib"
-    COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
-)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-esp32-wifi)
+    install(
+        FILES "$<TARGET_FILE:asn_esp32_wifi>"
+        DESTINATION "main/asn/asn-esp32-wifi/lib"
+        COMPONENT ${ASN_CUSTOMER_EXPORT_COMPONENT}
+    )
+endif()
 
 install(
     FILES "${ASN_EXPORT_CMAKE_DIR}/asn-esp32-wifi-CMakeLists.txt"

@@ -17,19 +17,23 @@ namespace AsnPlus::Bluetooth
     struct Config
     {
         uint32_t timestamp;
+        // 0 - Use defaults, otherwise set custom advertising intervals in units of 0.625 ms
+        uint32_t minAdvertisingInterval = 0;
+        // 0 - Use defaults, otherwise set custom advertising intervals in units of 0.625 ms
+        uint32_t maxAdvertisingInterval = 0;
     };
 
     struct History
     {
         uint32_t timestamp;
         uint32_t sequenceNumber;
-        Status status;
+        Status   status;
     };
 
     struct State
     {
         uint32_t timestamp;
-        Status status;
+        Status   status;
         uint16_t connectionHandle;
     };
-}
+}    // namespace AsnPlus::Bluetooth

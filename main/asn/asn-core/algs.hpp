@@ -22,20 +22,28 @@ namespace AsnPlus
         template< typename T >
         static constexpr T bcd_decode( T bcd )
         {
-            T decimal = 0;
-            for ( int i = static_cast< int >( sizeof( T ) ) * 2 - 1; i >= 0; --i )
-                decimal = static_cast< T >( decimal * 10 + ( ( bcd >> ( i * 4 ) ) & 0xF ) );
+            constexpr int BITS_PER_NIBBLE = 4;
+            constexpr int NIBBLE_COUNT    = static_cast< int >( sizeof( T ) ) * 2;
+            T decimal                     = 0;
+            for ( int nibble = NIBBLE_COUNT - 1; nibble >= 0; --nibble )
+            {
+                T digit = static_cast< T >( ( bcd >> ( nibble * BITS_PER_NIBBLE ) ) & 0xF );
+                decimal = static_cast< T >( decimal * 10 + digit );
+            }
             return decimal;
         }
 
         template< typename T >
         static constexpr T bcd_encode( T value )
         {
-            T bcd = 0;
-            for ( u32 shift = 0; shift < sizeof( T ) * 8; shift += 4 )
+            constexpr u32 BITS_PER_NIBBLE = 4;
+            constexpr u32 NIBBLE_COUNT    = sizeof( T ) * 2;
+            T bcd                         = 0;
+            for ( u32 nibble = 0; nibble < NIBBLE_COUNT; ++nibble )
             {
-                bcd   = static_cast< T >( bcd + ( ( value % 10 ) << shift ) );
-                value = static_cast< T >( value / 10 );
+                T digit = static_cast< T >( value % 10 );
+                bcd     = static_cast< T >( bcd + ( digit << ( nibble * BITS_PER_NIBBLE ) ) );
+                value   = static_cast< T >( value / 10 );
             }
             return bcd;
         }

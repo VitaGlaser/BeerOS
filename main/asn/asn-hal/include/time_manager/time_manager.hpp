@@ -31,6 +31,10 @@ namespace AsnPlus
 
         const TimeRuntime & getRuntime() const { return _timeRuntime; }
 
+        Time getLocalTime() const { return _systemClock.getLocalTime(); }
+
+        Time getUtcTime() const { return _systemClock.getUtc(); }
+
         bool initialize();
         void poll();
 

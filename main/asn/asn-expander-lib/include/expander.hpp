@@ -2,6 +2,9 @@
 
 #include "adc/adc.hpp"
 #include "asn/asn-core/logger.hpp"
+#include "asn/asn-hal/include/peripherals/gpio.hpp"
+#include "bootloader/bootloader.hpp"
+#include "bootloader/flasher.hpp"
 #include "gateway/i2c_gateway.hpp"
 #include "gpio/port.hpp"
 #include "register_addresses.hpp"
@@ -16,7 +19,14 @@ namespace AsnPlus::Expander
     class Expander
     {
     public:
-        Expander( Transport & transport );
+        enum class UpdateStrategy
+        {
+            BootPin,
+            Software,
+            None
+        };
+
+        Expander( Transport & transport, UpdateStrategy updateStrategy, IGpio * nrst = nullptr, IGpio * boot = nullptr );
 
         void initialize();
         void poll();
@@ -37,6 +47,9 @@ namespace AsnPlus::Expander
         using Log                         = Logger< 0, TAG >;
 
         Transport &     _transport;
+        IGpio *         _nrst;
+        IGpio *         _boot;
+        UpdateStrategy  _updateStrategy;
         RegisterContext _context { _transport };
 
         Gpio::Port _portA { _context, RegisterAddresses::Peripherals::PER_IOA };
@@ -56,11 +69,18 @@ namespace AsnPlus::Expander
         Timers::Timer _timerD { _context, RegisterAddresses::Peripherals::PER_TIMERD };
         Timers::Timer _timerE { _context, RegisterAddresses::Peripherals::PER_TIMERE };
 
+        Stm32Bootloader::GenericFlasher _flasher {
+            _transport,
+            DeviceDefinitions::STM32C051_64K::FlashSize,
+            DeviceDefinitions::STM32C051_64K::FlashAddress
+        };
         // TODO:
         //  ISR
         //  ADC
         //  PWM Channels
 
         void _loadAll();
+        void _resetNormal();
+        void _resetToBootloader();
     };
 }    // namespace AsnPlus::Expander

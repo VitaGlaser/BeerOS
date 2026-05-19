@@ -11,6 +11,8 @@ namespace AsnPlus::Expander
     public:
         struct Config : public IGpio::Config
         {
+            bool pullupEnabled   = false;
+            bool pulldownEnabled = false;
         };
 
         PortPinGpio( Config & config, Gpio::Port::Pin pin );

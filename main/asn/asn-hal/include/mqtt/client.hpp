@@ -32,14 +32,14 @@ namespace AsnPlus::Mqtt
             static constexpr size_t USERNAME_SIZE   = 64;
             static constexpr size_t PASSWORD_SIZE   = 128;
 
-            bool                      enabled       = true;
-            String< BROKER_URI_SIZE > brokerUri;
-            String< CLIENT_ID_SIZE >  clientId;
-            String< USERNAME_SIZE >   username;
-            String< PASSWORD_SIZE >   password;
-            uint16_t                  keepalive    = 60;
-            bool                      useTls        = false;
-            bool                      autoReconnect = true;
+            bool     enabled       = true;
+            char     brokerUri[BROKER_URI_SIZE] {};
+            char     clientId[CLIENT_ID_SIZE]   {};
+            char     username[USERNAME_SIZE]     {};
+            char     password[PASSWORD_SIZE]     {};
+            uint16_t keepalive     = 60;
+            bool     useTls        = false;
+            bool     autoReconnect = true;
         };
 
         enum class State : uint8_t

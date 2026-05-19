@@ -19,15 +19,54 @@ namespace AsnPlus
     using reg16 = volatile u16;
     using reg32 = volatile u32;
 
-    using namespace std::chrono_literals;
+
     using std::chrono::duration_cast;
 
-    using nanoseconds  = std::chrono::duration< u32, std::nano >;
-    using microseconds = std::chrono::duration< u32, std::micro >;
-    using milliseconds = std::chrono::duration< u32, std::milli >;
-    using seconds      = std::chrono::duration< u32 >;
-    using minutes      = std::chrono::duration< u32, std::ratio< 60 > >;
-    using hours        = std::chrono::duration< u32, std::ratio< 3600 > >;
+    template< typename T >
+    using NSec      = std::chrono::duration< T, std::nano >;
+
+    template< typename T >
+    using USec      = std::chrono::duration< T, std::micro >;
+
+    template< typename T >
+    using MSec      = std::chrono::duration< T, std::milli >;
+
+    template< typename T >
+    using Sec       = std::chrono::duration< T >;
+
+    template< typename T >
+    using Min       = std::chrono::duration< T, std::ratio< 60 > >;
+
+    template< typename T >
+    using Hours     = std::chrono::duration< T, std::ratio< 3600 > >;
+
+
+    using nsec32    = NSec< u32 >;
+    using usec32    = USec< u32 >;
+    using msec32    = MSec< u32 >;
+    using sec32     = Sec< u32 >;
+    using min32     = Min< u32 >;
+    using hours32   = Hours< u32 >;
+
+
+    inline constexpr
+    auto operator ""_ns( u64 value )    { return nsec32( value ); }
+    
+    inline constexpr
+    auto operator ""_us( u64 value )    { return usec32( value ); }
+
+    inline constexpr
+    auto operator ""_ms( u64 value )    { return msec32( value ); }
+
+    inline constexpr
+    auto operator ""_s( u64 value )     { return sec32( value ); }
+
+    inline constexpr
+    auto operator ""_min( u64 value )   { return min32( value ); }
+
+    inline constexpr
+    auto operator ""_hr( u64 value )    { return hours32( value ); }
+
 
     struct DateTime
     {

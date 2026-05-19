@@ -1,11 +1,15 @@
 #pragma once
 
 #include "bootloader.hpp"
-#include "transport.hpp"
 #include <cinttypes>
 #include <cstring>
 #include <iterator>
 #include <stdint.h>
+
+namespace AsnPlus::Expander
+{
+    class Transport;
+}
 
 namespace AsnPlus::Stm32Bootloader
 {
@@ -13,7 +17,7 @@ namespace AsnPlus::Stm32Bootloader
     {
     public:
         GenericFlasher(
-            BootloaderTransport & transport,
+            Expander::Transport & transport,
             size_t                flashSize    = 32'768,
             uint32_t              flashAddress = 0x08'00'00'00
         );
@@ -21,13 +25,15 @@ namespace AsnPlus::Stm32Bootloader
         bool flashFirmware( const uint8_t * data, size_t size, bool noErase = false );
         bool verifyFirmware( const uint8_t * data, size_t size );
         bool exitBootloader();
-
+        bool enableNBootSel();
         Bootloader & getBootloaderHandle();
 
     private:
         static constexpr size_t   MAX_UPLOAD_CHUNK_SIZE = 256;
         static constexpr uint32_t OPTR_BYTES_ADDR       = 0x1F'FF'78'00;
         static constexpr uint32_t BIT_NBOOT0            = 26;
+        static constexpr uint32_t BIT_NBOOT1            = 25;
+        static constexpr uint32_t BIT_NBOOTSEL          = 24;
 
         Bootloader _bootloader;
 

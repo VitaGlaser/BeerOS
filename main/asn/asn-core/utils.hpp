@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+// TODO (Kostik): Split into vendor specific files for each company, espressif, stm, etc.
+
 #if defined( STM32C0xx ) || defined( STM32C071xx ) || defined( STM32F0xx ) || defined( STM32F1xx ) ||                  \
     defined( STM32F2xx ) || defined( STM32F3xx ) || defined( STM32F4xx ) || defined( STM32F7xx ) ||                    \
     defined( STM32G0xx ) || defined( STM32G4xx ) || defined( STM32H5xx ) || defined( STM32H7xx ) ||                    \

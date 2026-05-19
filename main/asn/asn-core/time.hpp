@@ -3,6 +3,8 @@
 #include "string.hpp"
 #include "types.hpp"
 
+// TODO(DK): Use this as wrapper only ad swap the logic for ctime/chrono
+
 namespace AsnPlus
 {
     static constexpr uint32_t MICROS_PER_MILI = 1000u;
@@ -150,6 +152,13 @@ namespace AsnPlus
             day     = static_cast< uint8_t >( days + 1 );
 
             weekday = weekdayFromYmd( year, month, day );
+        }
+
+        uint32_t getSecondsSinceMidnight() const
+        {
+            return static_cast< uint32_t >( hour ) * SECS_PER_HOUR +
+                static_cast< uint32_t >( minute ) * SECS_PER_MIN +
+                static_cast< uint32_t >( second );
         }
 
         void getReadableString( IString & buffer ) const

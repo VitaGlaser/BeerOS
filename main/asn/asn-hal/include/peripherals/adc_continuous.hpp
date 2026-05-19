@@ -15,6 +15,7 @@ namespace AsnPlus
             struct Config
             {
                 uint8_t channel;
+                bool    useMilliVolts = false;
             };
 
             IChannel( Config & config, IRingBuffer< uint32_t > & buffer, IAdcContinuous & adc ) :
