@@ -193,7 +193,7 @@ namespace AsnPlus
         Esp32::Gpio expanderBoot { expanderBootConfig };
 
         Expander::SpiTransport transport { expanderSpi, Expander::SpiTransport::DEFAULT_SLAVE_ID };
-        Expander::Expander expander { transport, Expander::Expander::UpdateStrategy::BootPin, &expanderNrst, nullptr };
+        Expander::Expander expander { transport, Expander::Expander::UpdateStrategy::None, &expanderNrst, nullptr };
 
         Expander::PortPinGpio::Config expanderGpioConfig {
             IGpio::Config::PinMode::OUTPUT,
@@ -424,7 +424,7 @@ namespace AsnPlus
         void _initializeExpander()
         {
             expanderNrst.initialize();
-            expanderBoot.initialize();
+            // expanderBoot.initialize();
 
             expanderCs.initialize();
             expanderSpi.initialize();
