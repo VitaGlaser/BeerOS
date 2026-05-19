@@ -98,6 +98,11 @@ namespace AsnPlus
             UnrecognizedEvents unrecognizedEvents                                          = {};
 
             ClassificationState classificationState[ Config::CLASSIFICATION_CONFIG_COUNT ] = {};
+
+            DataSource::Base::DebugInfo debugInfoFlow                                      = {};
+            DataSource::Base::DebugInfo debugInfoTemperature                               = {};
+            DataSource::Base::DebugInfo debugInfoPressure                                  = {};
+            DataSource::Base::DebugInfo debugInfoConductivity                              = {};
         };
 
         Channel(
@@ -108,7 +113,7 @@ namespace AsnPlus
             IRingBuffer< EventMonitor::Event > & eventHistory,
             uint32_t &                           lastSeqNum
         ) :
-        _index( index ),
+            _index( index ),
             _config( config ),
             _runtime( runtime ),
             _dataSourceManager( dataSourceManager ),
@@ -150,6 +155,21 @@ namespace AsnPlus
             _runtime.flow        = _eventMonitorRuntime.flow.value;
             _runtime.temperature = _eventMonitorRuntime.temperature.value;
             _runtime.pressure    = _eventMonitorRuntime.pressure.value;
+
+            if ( _flow.isDataSourceBound() )
+            {
+                _runtime.debugInfoFlow = _flow.getDebugInfo();
+            }
+
+            if ( _temperature.isDataSourceBound() )
+            {
+                _runtime.debugInfoTemperature = _temperature.getDebugInfo();
+            }
+
+            if ( _pressure.isDataSourceBound() )
+            {
+                _runtime.debugInfoPressure = _pressure.getDebugInfo();
+            }
         }
 
         Config & getConfig() { return _config; }
@@ -167,7 +187,11 @@ namespace AsnPlus
                         auto * dataSource = _dataSourceManager.getFlowModbusDataSourceById( _config.flowConfig.id );
                         if ( dataSource )
                         {
-                            Log::debug( " (%u) Binding Modbus flow sensor data source by ID '%llu'", _index, _config.flowConfig.id );
+                            Log::debug(
+                                " (%u) Binding Modbus flow sensor data source by ID '%llu'",
+                                _index,
+                                _config.flowConfig.id
+                            );
                         }
                         else
                         {
@@ -189,7 +213,10 @@ namespace AsnPlus
                         if ( dataSource )
                         {
                             Log::debug(
-                                " (%u) Binding pulse flow sensor (channel %u -> port %llu)", _index, index, _config.flowConfig.id
+                                " (%u) Binding pulse flow sensor (channel %u -> port %llu)",
+                                _index,
+                                index,
+                                _config.flowConfig.id
                             );
                             _flow.bindDataSource( *dataSource );
                         }
@@ -200,7 +227,11 @@ namespace AsnPlus
                     break;
 
                 default:
-                    Log::error( " (%u) Unsupported flow type for binding: %d", _index, static_cast< uint8_t >( _config.flowType ) );
+                    Log::error(
+                        " (%u) Unsupported flow type for binding: %d",
+                        _index,
+                        static_cast< uint8_t >( _config.flowType )
+                    );
             }
         }
 
@@ -215,13 +246,18 @@ namespace AsnPlus
                         if ( dataSource )
                         {
                             Log::debug(
-                                " (%u) Binding Modbus temperature sensor data source by ID '%llu'", _index, _config.temperatureConfig.id
+                                " (%u) Binding Modbus temperature sensor data source by ID '%llu'",
+                                _index,
+                                _config.temperatureConfig.id
                             );
                         }
                         else
                         {
                             Log::debug(
-                                " (%u) No Modbus temperature data source with ID '%llu', falling back to index %u", _index, _config.temperatureConfig.id, index
+                                " (%u) No Modbus temperature data source with ID '%llu', falling back to index %u",
+                                _index,
+                                _config.temperatureConfig.id,
+                                index
                             );
                             dataSource = _dataSourceManager.getTemperatureModbusDataSource( index );
                             if ( dataSource ) dataSource->setId( _config.temperatureConfig.id );
@@ -249,7 +285,9 @@ namespace AsnPlus
 
                 default:
                     Log::error(
-                        " (%u) Unsupported temperature type for binding: %d", _index, static_cast< uint8_t >( _config.temperatureType )
+                        " (%u) Unsupported temperature type for binding: %d",
+                        _index,
+                        static_cast< uint8_t >( _config.temperatureType )
                     );
             }
         }
@@ -274,7 +312,9 @@ namespace AsnPlus
 
                 default:
                     Log::error(
-                        " (%u) Unsupported pressure type for binding: %d", _index, static_cast< uint8_t >( _config.pressureType )
+                        " (%u) Unsupported pressure type for binding: %d",
+                        _index,
+                        static_cast< uint8_t >( _config.pressureType )
                     );
             }
         }
@@ -321,7 +361,10 @@ namespace AsnPlus
             {
                 event.type = EventMonitor::Event::EventType::CLEANING;
                 Log::info(
-                    " (%u) Event classified as cleaning (volume=%u, threshold=%u)", _index, event.volume, _config.cleaningVolumeThr
+                    " (%u) Event classified as cleaning (volume=%u, threshold=%u)",
+                    _index,
+                    event.volume,
+                    _config.cleaningVolumeThr
                 );
                 return;
             }
@@ -331,7 +374,9 @@ namespace AsnPlus
             {
                 event.type = EventMonitor::Event::EventType::UNKNOWN;
                 Log::warn(
-                    " (%u) Event volume %u does not match any classification, counting as unrecognized", _index, event.volume
+                    " (%u) Event volume %u does not match any classification, counting as unrecognized",
+                    _index,
+                    event.volume
                 );
                 ++_runtime.unrecognizedEvents.count;
                 _runtime.unrecognizedEvents.volume += event.volume;
@@ -340,7 +385,10 @@ namespace AsnPlus
 
             event.type = EventMonitor::Event::EventType::BEVERAGE;
             Log::info(
-                " (%u) Event assigned to classification index %d (volume=%u)", _index, static_cast< int >( index ), event.volume
+                " (%u) Event assigned to classification index %d (volume=%u)",
+                _index,
+                static_cast< int >( index ),
+                event.volume
             );
             auto & state = _runtime.classificationState[ static_cast< uint8_t >( index ) ];
             ++state.count;

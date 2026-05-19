@@ -4,9 +4,6 @@
  */
 #pragma once
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-
 #include "program/config.hpp"
 
 #include "asn/asn-core/logger.hpp"
@@ -29,11 +26,7 @@ namespace AsnPlus::Mqtt
     class Manager
     {
     public:
-        Manager( IClient & mqttClient, Database & database ) :
-            _mqttClient( mqttClient ),
-            _database( database )
-        {
-        }
+        Manager( IClient & mqttClient, Database & database ) : _mqttClient( mqttClient ), _database( database ) {}
 
         bool initialize()
         {
@@ -48,7 +41,8 @@ namespace AsnPlus::Mqtt
         void onConnected()
         {
             Log::info( "Connected — republishing all channels" );
-            memset( _lastPublishTick, 0, sizeof( _lastPublishTick ) );
+            for ( auto & ms : _lastPublishMs ) ms = 0;
+            for ( auto & ms : _lastDebugPublishMs ) ms = 0;
         }
 
         /**
@@ -68,11 +62,12 @@ namespace AsnPlus::Mqtt
             _applyConfigIfChanged();
             if ( _mqttClient.getState() != IClient::State::CONNECTED ) return;
             _publishFlowData();
+            _publishFlowDebugInfo();
         }
 
     private:
-        static constexpr const char TAG[] = "Mqtt::Manager";
-        using Log                         = Logger< ProjectConfig::LOG_LEVEL_MQTT, TAG >;
+        static constexpr const char TAG[]               = "Mqtt::Manager";
+        using Log                                       = Logger< ProjectConfig::LOG_LEVEL_MQTT, TAG >;
 
         static constexpr uint8_t  CHANNEL_COUNT         = 4;
         static constexpr uint32_t HEARTBEAT_INTERVAL_MS = 30'000;
@@ -81,9 +76,53 @@ namespace AsnPlus::Mqtt
         IClient &  _mqttClient;
         Database & _database;
 
-        uint64_t   _lastAppliedTimestamp               = 0;
-        uint16_t   _lastPublishedFlow[ CHANNEL_COUNT ] {};
-        TickType_t _lastPublishTick[ CHANNEL_COUNT ]   {};
+        uint64_t                    _lastAppliedTimestamp = 0;
+        uint16_t                    _lastPublishedFlow[ CHANNEL_COUNT ] {};
+        uint64_t                    _lastPublishMs[ CHANNEL_COUNT ] {};
+        DataSource::Base::DebugInfo _lastPublishedFlowDebug[ CHANNEL_COUNT ] {};
+        uint64_t                    _lastDebugPublishMs[ CHANNEL_COUNT ] {};
+
+        void _publishFlowDebugInfo()
+        {
+            const uint64_t now = Utils::getMs64();
+
+            for ( uint8_t i = 0; i < CHANNEL_COUNT; ++i )
+            {
+                if ( ! _database.channelConfigs[ i ].enabled ) continue;
+
+                const auto & debug = _database.channelRuntimes[ i ].debugInfoFlow;
+                const bool   changed =
+                    ( memcmp( debug.data, _lastPublishedFlowDebug[ i ].data, DataSource::Base::DebugInfo::INFO_SIZE ) !=
+                      0 );
+                const bool timeout = ( ( now - _lastDebugPublishMs[ i ] ) >= HEARTBEAT_INTERVAL_MS );
+
+                if ( ! changed && ! timeout ) continue;
+
+                char topic[ TOPIC_MAX_LEN ];
+                snprintf(
+                    topic,
+                    sizeof( topic ),
+                    "%.*s/channel/%u/flow/debug",
+                    static_cast< int >( ManufactureInfo::UID_LENGTH ),
+                    _database.manufactureInfo.uid,
+                    i
+                );
+
+                char payload[ DataSource::Base::DebugInfo::INFO_SIZE * 2 + 1 ];
+                for ( uint8_t b = 0; b < DataSource::Base::DebugInfo::INFO_SIZE; ++b )
+                {
+                    snprintf( payload + b * 2, 3, "%02X", debug.data[ b ] );
+                }
+
+                _mqttClient.publish(
+                    StringView { topic },
+                    IConstBytes { reinterpret_cast< const uint8_t * >( payload ), strlen( payload ) }
+                );
+
+                _lastPublishedFlowDebug[ i ] = debug;
+                _lastDebugPublishMs[ i ]     = now;
+            }
+        }
 
         void _applyConfigIfChanged()
         {
@@ -92,7 +131,7 @@ namespace AsnPlus::Mqtt
 
             _lastAppliedTimestamp = cfg.timestamp;
 
-            if ( cfg.enabled && ! cfg.brokerUri.empty() )
+            if ( cfg.enabled && cfg.brokerUri[ 0 ] != '\0' )
             {
                 Log::info( "Config changed — (re)initializing" );
                 _mqttClient.initialize();
@@ -106,7 +145,7 @@ namespace AsnPlus::Mqtt
 
         void _publishFlowData()
         {
-            const TickType_t now = xTaskGetTickCount();
+            const uint64_t now = Utils::getMs64();
 
             for ( uint8_t i = 0; i < CHANNEL_COUNT; ++i )
             {
@@ -114,8 +153,7 @@ namespace AsnPlus::Mqtt
 
                 const uint16_t flow    = _database.channelRuntimes[ i ].flow;
                 const bool     changed = ( flow != _lastPublishedFlow[ i ] );
-                const bool     timeout =
-                    ( ( now - _lastPublishTick[ i ] ) >= pdMS_TO_TICKS( HEARTBEAT_INTERVAL_MS ) );
+                const bool     timeout = ( ( now - _lastPublishMs[ i ] ) >= HEARTBEAT_INTERVAL_MS );
 
                 if ( ! changed && ! timeout ) continue;
 
@@ -138,7 +176,7 @@ namespace AsnPlus::Mqtt
                 );
 
                 _lastPublishedFlow[ i ] = flow;
-                _lastPublishTick[ i ]   = now;
+                _lastPublishMs[ i ]     = now;
             }
         }
     };

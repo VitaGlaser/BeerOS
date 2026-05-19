@@ -43,7 +43,7 @@ namespace AsnPlus::DataSource
                 return;
             }
 
-            uint64_t ts  = TimeManager::instance().getRuntime().utcEpochMs;
+            uint64_t ts  = TimeManager::instance().getUtcTime().toEpochMillis();
             uint32_t val = static_cast< uint32_t >( value );
             _writeSample( ts, val );
 

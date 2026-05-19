@@ -1,5 +1,4 @@
-#ifndef _ASNPLUS_DATABASE_ADV_DATA_HPP
-#define _ASNPLUS_DATABASE_ADV_DATA_HPP
+#pragma once
 
 #include "asn/asn-esp32-ble/include/adv_data.hpp"
 
@@ -22,5 +21,3 @@ namespace AsnPlus
         IBytes get_mfg_data() override { return { (u8 *) &manufacturer_specific, sizeof( manufacturer_specific ) }; }
     };
 }    // namespace AsnPlus
-
-#endif

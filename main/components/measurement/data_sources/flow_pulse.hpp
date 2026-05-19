@@ -31,14 +31,35 @@ namespace AsnPlus::DataSource
                 return;
             }
 
-            const float flowRate =
-                _channel->getFrequency() / static_cast< float >( _pulsesPerLitre ) * TO_ML_PER_MINUTE;
+            uint16_t count     = _channel->getValue();
+            uint64_t timestamp = TimeManager::instance().getUtcTime().toEpochMillis();
 
-            uint64_t ts  = TimeManager::instance().getRuntime().utcEpochMs;
-            uint32_t val = static_cast< uint32_t >( flowRate );
-            _writeSample( ts, val );
+            uint16_t deltaPulses =
+                ( count >= _lastCount ) ? ( count - _lastCount ) : ( ( 0xFFFF - _lastCount ) + count + 1 );
 
-            Log::debug( "Polled pulse flow sensor: %u ml/min (%llu ms)", val, ts );
+            uint32_t value = 0;
+            if ( _lastTimestamp > 0 )
+            {
+                uint64_t deltaTimeMs = timestamp - _lastTimestamp;
+                if ( deltaTimeMs > 0 )
+                {
+                    value = static_cast< uint32_t >(
+                        static_cast< float >( deltaPulses * ML_PER_LITRE * MILLIS_PER_MIN ) /
+                        ( static_cast< float >( _pulsesPerLitre * deltaTimeMs ) )
+                    );
+                }
+            }
+
+            _lastCount     = count;
+            _lastTimestamp = timestamp;
+
+            // Store pulse count in debug info for visibility;
+            _debugInfo.data[ 0 ] = static_cast< uint8_t >( ( count >> 8 ) & 0xFF );
+            _debugInfo.data[ 1 ] = static_cast< uint8_t >( count & 0xFF );
+
+            _writeSample( timestamp, value );
+
+            Log::debug( "Polled pulse flow sensor: %u ml/min (%llu ms)", value, timestamp );
         }
 
         void bindTimerChannel( Expander::Timers::Timer::Channel & channel ) { _channel = &channel; }
@@ -49,9 +70,12 @@ namespace AsnPlus::DataSource
         static constexpr const char TAG[]           = "FlowPulseDataSource";
         using Log                                   = Logger< ProjectConfig::LOG_LEVEL_DATA_SOURCES, TAG >;
 
-        static constexpr float TO_ML_PER_MINUTE     = 60 * 1000.0f;
+        static constexpr float ML_PER_LITRE         = 1000.0f;
 
         Expander::Timers::Timer::Channel * _channel = nullptr;
         uint16_t                           _pulsesPerLitre;
+
+        uint16_t _lastCount     = 0;
+        uint64_t _lastTimestamp = 0;
     };
 }    // namespace AsnPlus::DataSource

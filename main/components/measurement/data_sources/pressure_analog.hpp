@@ -36,18 +36,19 @@ namespace AsnPlus::DataSource
             }
 
             const uint32_t rawValue = static_cast< uint32_t >( _channel->getValue() );
-            const uint64_t ts       = TimeManager::instance().getRuntime().utcEpochMs;
+            const uint64_t ts       = TimeManager::instance().getUtcTime().toEpochMillis();
             _writeSample( ts, rawValue );
 
             Log::debug( "Polled analog pressure sensor (ID: %llu): %u (%llu ms)", _id, rawValue, ts );
         }
 
         void bindAdcChannel( Expander::Adc::Adc::Channel & channel ) { _channel = &channel; }
+
         void unbindAdcChannel() { _channel = nullptr; }
 
     private:
-        static constexpr const char TAG[] = "PressureAnalogDataSource";
-        using Log                         = Logger< ProjectConfig::LOG_LEVEL_DATA_SOURCES, TAG >;
+        static constexpr const char TAG[]      = "PressureAnalogDataSource";
+        using Log                              = Logger< ProjectConfig::LOG_LEVEL_DATA_SOURCES, TAG >;
 
         Expander::Adc::Adc::Channel * _channel = nullptr;
     };

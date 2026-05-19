@@ -11,6 +11,7 @@
 
 #include "asn/asn-esp32-hal/include/peripherals/gpio.hpp"
 #include "asn/asn-esp32-hal/include/peripherals/i2c_master.hpp"
+#include "asn/asn-esp32-hal/include/peripherals/spi_master.hpp"
 #include "asn/asn-esp32-hal/include/peripherals/uart.hpp"
 
 #include "asn/asn-drivers/include/pcf85263.hpp"
@@ -164,9 +165,35 @@ namespace AsnPlus
         };
         Esp32::Gpio expanderNrst { expanderNrstConfig };
 
-        // Esp32::DigitalOutput expanderBoot { Pinout::EXPANDER_BOOT, false, false };
-        Expander::SpiTransport transport { spi_host_device_t::SPI3_HOST, Pinout::EXPANDER_CS, 100'000 };
-        Expander::Expander     expander { transport };
+        Esp32::Gpio::Config expanderCsConfig {
+            IGpio::Config::PinMode::OUTPUT,
+            IGpio::Config::InterruptType::NONE,
+            Pinout::EXPANDER_CS,
+            false,
+            false
+        };
+        Esp32::Gpio expanderCs { expanderCsConfig };
+
+        Esp32::SpiMaster::Config expanderSpiConfig {
+            { 100'000 },
+            SPI3_HOST,
+            Pinout::EXPANDER_SPI_SCK,
+            Pinout::EXPANDER_SPI_MOSI,
+            Pinout::EXPANDER_SPI_MISO
+        };
+        Esp32::SpiMaster expanderSpi { expanderSpiConfig };
+
+        Esp32::Gpio::Config expanderBootConfig {
+            IGpio::Config::PinMode::OUTPUT,
+            IGpio::Config::InterruptType::NONE,
+            Pinout::EXPANDER_BOOT,
+            false,
+            false
+        };
+        Esp32::Gpio expanderBoot { expanderBootConfig };
+
+        Expander::SpiTransport transport { expanderSpi, Expander::SpiTransport::DEFAULT_SLAVE_ID };
+        Expander::Expander expander { transport, Expander::Expander::UpdateStrategy::BootPin, &expanderNrst, nullptr };
 
         Expander::PortPinGpio::Config expanderGpioConfig {
             IGpio::Config::PinMode::OUTPUT,
@@ -389,19 +416,19 @@ namespace AsnPlus
         static constexpr uint32_t COMMUNICATION_TASK_DELAY_MS = 100;
         static constexpr uint32_t COMPONENTS_TASK_DELAY_MS    = 25;
         static constexpr uint32_t CONTROL_TASK_DELAY_MS       = 10;
-        static constexpr uint32_t DATA_SOURCE_TASK_DELAY_MS   = 10;
+        static constexpr uint32_t DATA_SOURCE_TASK_DELAY_MS   = 25;
         static constexpr uint32_t LTE_TASK_DELAY_MS           = 100;
         static constexpr uint32_t MQTT_TASK_DELAY_MS          = 100;
         static constexpr uint32_t SYSTEM_TASK_DELAY_MS        = 1000;
 
         void _initializeExpander()
         {
-            _initExpanderSpiBus();
+            expanderNrst.initialize();
+            expanderBoot.initialize();
 
-            expanderNrst.set( false );
-            Utils::delay( 100 );
-            expanderNrst.set( true );
-            Utils::delay( 100 );
+            expanderCs.initialize();
+            expanderSpi.initialize();
+            expanderSpi.addDevice( Expander::SpiTransport::DEFAULT_SLAVE_ID, expanderCs );
 
             transport.initialize();
             expander.initialize();
@@ -437,72 +464,57 @@ namespace AsnPlus
         void _initializeTimers()
         {
             static constexpr uint16_t PRESCALER = 1999;
-            timer1.setMode( Expander::TIMxCR::Mode::FREQ );
+            static constexpr uint8_t  FILTER    = 15;
+
+            timer1.setMode( Expander::TIMxCR::Mode::COUNT );
             timer1.setPrescaler( PRESCALER );
             timer1.setAutoReload( 0xFFFF );
             timer1.setAutoReloadPreload( true );
 
             timer1Channel1.setPolarity( Expander::TIMxCCMR::Polarity::ACTIVE_HIGH );
             timer1Channel1.setICPrescaler( Expander::TIMxCCMR::ICPrescaler::EVERY_EDGE );
-            timer1Channel1.setICFilter( 0 );
+            timer1Channel1.setICFilter( FILTER );
             timer1Channel1.enable();
 
             timer1.enable();
 
-            timer2.setMode( Expander::TIMxCR::Mode::FREQ );
+            timer2.setMode( Expander::TIMxCR::Mode::COUNT );
             timer2.setPrescaler( PRESCALER );
             timer2.setAutoReload( 0xFFFF );
             timer2.setAutoReloadPreload( true );
 
             timer2Channel1.setPolarity( Expander::TIMxCCMR::Polarity::ACTIVE_HIGH );
             timer2Channel1.setICPrescaler( Expander::TIMxCCMR::ICPrescaler::EVERY_EDGE );
-            timer2Channel1.setICFilter( 0 );
+            timer2Channel1.setICFilter( FILTER );
             timer2Channel1.enable();
 
             timer2.enable();
 
-            timer3.setMode( Expander::TIMxCR::Mode::FREQ );
+            timer3.setMode( Expander::TIMxCR::Mode::COUNT );
             timer3.setPrescaler( PRESCALER );
             timer3.setAutoReload( 0xFFFF );
             timer3.setAutoReloadPreload( true );
 
             timer3Channel1.setPolarity( Expander::TIMxCCMR::Polarity::ACTIVE_HIGH );
             timer3Channel1.setICPrescaler( Expander::TIMxCCMR::ICPrescaler::EVERY_EDGE );
-            timer3Channel1.setICFilter( 0 );
+            timer3Channel1.setICFilter( FILTER );
             timer3Channel1.enable();
 
             timer3.enable();
 
-            timer4.setMode( Expander::TIMxCR::Mode::FREQ );
+            timer4.setMode( Expander::TIMxCR::Mode::COUNT );
             timer4.setPrescaler( PRESCALER );
             timer4.setAutoReload( 0xFFFF );
             timer4.setAutoReloadPreload( true );
 
             timer4Channel1.setPolarity( Expander::TIMxCCMR::Polarity::ACTIVE_HIGH );
             timer4Channel1.setICPrescaler( Expander::TIMxCCMR::ICPrescaler::EVERY_EDGE );
-            timer4Channel1.setICFilter( 0 );
+            timer4Channel1.setICFilter( FILTER );
             timer4Channel1.enable();
 
             timer4.enable();
 
             Log::info( "Timers on Expander initialized" );
-        }
-
-        void _initExpanderSpiBus()
-        {
-            spi_bus_config_t bus_config = {
-                .mosi_io_num     = Pinout::EXPANDER_SPI_MOSI,
-                .miso_io_num     = Pinout::EXPANDER_SPI_MISO,
-                .sclk_io_num     = Pinout::EXPANDER_SPI_SCK,
-                .quadwp_io_num   = -1,
-                .quadhd_io_num   = -1,
-                .data4_io_num    = -1,
-                .data5_io_num    = -1,
-                .data6_io_num    = -1,
-                .data7_io_num    = -1,
-                .max_transfer_sz = 4096,
-            };
-            spi_bus_initialize( SPI3_HOST, &bus_config, SPI_DMA_CH_AUTO );
         }
 
         void _initializeLteTask()

@@ -57,6 +57,19 @@ namespace AsnPlus
             return _dataSource->read();
         }
 
+        DataSource::Base::DebugInfo getDebugInfo() const
+        {
+            if ( _dataSource == nullptr )
+            {
+                Log::debug( "No data source configured for this sensor" );
+                return {};
+            }
+
+            return _dataSource->getDebugInfo();
+        }
+
+        bool isDataSourceBound() const { return _dataSource != nullptr; }
+
         void bindDataSource( DataSource::Base & dataSource ) { _dataSource = &dataSource; }
 
         void unbindDataSource() { _dataSource = nullptr; }

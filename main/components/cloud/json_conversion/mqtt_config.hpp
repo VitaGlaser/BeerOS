@@ -25,9 +25,9 @@ namespace AsnPlus::Mqtt
         using namespace Cloud::MqttConfigJson;
         cJSON_AddNumberToObject( json, TIMESTAMP_TAG, static_cast< double >( config.timestamp ) );
         cJSON_AddBoolToObject( json, ENABLED_TAG, config.enabled );
-        cJSON_AddStringToObject( json, BROKER_URI_TAG, config.brokerUri.c_str() );
-        cJSON_AddStringToObject( json, USERNAME_TAG, config.username.c_str() );
-        cJSON_AddStringToObject( json, PASSWORD_TAG, config.password.c_str() );
+        cJSON_AddStringToObject( json, BROKER_URI_TAG, config.brokerUri );
+        cJSON_AddStringToObject( json, USERNAME_TAG, config.username );
+        cJSON_AddStringToObject( json, PASSWORD_TAG, config.password );
         cJSON_AddNumberToObject( json, KEEPALIVE_S_TAG, config.keepalive );
         cJSON_AddBoolToObject( json, USE_TLS_TAG, config.useTls );
         cJSON_AddBoolToObject( json, AUTO_RECONNECT_TAG, config.autoReconnect );
@@ -44,13 +44,16 @@ namespace AsnPlus::Mqtt
         config.autoReconnect = cJSON_IsTrue( cJSON_GetObjectItem( json, AUTO_RECONNECT_TAG ) );
 
         cJSON * brokerUri    = cJSON_GetObjectItem( json, BROKER_URI_TAG );
-        if ( brokerUri && cJSON_IsString( brokerUri ) ) config.brokerUri = brokerUri->valuestring;
+        if ( brokerUri && cJSON_IsString( brokerUri ) )
+            StringExt( config.brokerUri, config.brokerUri, IClient::Config::BROKER_URI_SIZE ).assign( brokerUri->valuestring );
 
         cJSON * username = cJSON_GetObjectItem( json, USERNAME_TAG );
-        if ( username && cJSON_IsString( username ) ) config.username = username->valuestring;
+        if ( username && cJSON_IsString( username ) )
+            StringExt( config.username, config.username, IClient::Config::USERNAME_SIZE ).assign( username->valuestring );
 
         cJSON * password = cJSON_GetObjectItem( json, PASSWORD_TAG );
-        if ( password && cJSON_IsString( password ) ) config.password = password->valuestring;
+        if ( password && cJSON_IsString( password ) )
+            StringExt( config.password, config.password, IClient::Config::PASSWORD_SIZE ).assign( password->valuestring );
 
         cJSON * keepalive = cJSON_GetObjectItem( json, KEEPALIVE_S_TAG );
         if ( keepalive && cJSON_IsNumber( keepalive ) )

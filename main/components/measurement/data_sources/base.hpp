@@ -15,6 +15,12 @@ namespace AsnPlus::DataSource
             uint32_t value     = 0;
         };
 
+        struct DebugInfo
+        {
+            static constexpr uint8_t INFO_SIZE = 8;
+            uint8_t                  data[ INFO_SIZE ] = {};
+        };
+
         Base()                    = default;
 
         virtual bool initialize() = 0;
@@ -37,10 +43,18 @@ namespace AsnPlus::DataSource
 
         bool isEnabled() const { return _enabled; }
 
+        DebugInfo getDebugInfo() const
+        {
+            LockGuard guard( _sampleMux );
+            return _debugInfo;
+        }
+
     protected:
         bool     _enabled = false;
         uint64_t _id      = 0;
         Sample   _sample  = {};
+
+        DebugInfo _debugInfo = {};
 
         mutable Mutex _sampleMux {};
 

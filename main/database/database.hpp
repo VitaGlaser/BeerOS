@@ -156,7 +156,7 @@ namespace AsnPlus
 
             char uidStr[ ManufactureInfo::UID_LENGTH + 1 ] = {};
             memcpy( uidStr, manufactureInfo.uid, ManufactureInfo::UID_LENGTH );
-            mqttConfig.clientId.assign( uidStr );
+            strncpy( mqttConfig.clientId, uidStr, sizeof( mqttConfig.clientId ) - 1 );
 
             Log::info( "Initialized" );
         }
