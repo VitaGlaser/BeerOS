@@ -193,7 +193,8 @@ namespace AsnPlus
         Esp32::Gpio expanderBoot { expanderBootConfig };
 
         Expander::SpiTransport transport { expanderSpi, Expander::SpiTransport::DEFAULT_SLAVE_ID };
-        Expander::Expander expander { transport, Expander::Expander::UpdateStrategy::None, &expanderNrst, nullptr };
+        Expander::Expander
+            expander { transport, Expander::Expander::UpdateStrategy::BootPin, &expanderNrst, &expanderBoot };
 
         Expander::PortPinGpio::Config expanderGpioConfig {
             IGpio::Config::PinMode::OUTPUT,
@@ -424,7 +425,7 @@ namespace AsnPlus
         void _initializeExpander()
         {
             expanderNrst.initialize();
-            // expanderBoot.initialize();
+            expanderBoot.initialize();
 
             expanderCs.initialize();
             expanderSpi.initialize();
@@ -556,13 +557,13 @@ namespace AsnPlus
             }
 
             if ( xTaskCreatePinnedToCore(
-                     communicationTask, "communicationTask", 12 * 1024, this, COMMUNICATION_TASK_PRIORITY, NULL, 0
+                     communicationTask, "communicationTask", 16 * 1024, this, COMMUNICATION_TASK_PRIORITY, NULL, 0
                  ) != pdPASS )
             {
                 Log::error( "Failed to create communication task" );
             }
 
-            if ( xTaskCreatePinnedToCore( mqttTask, "mqttTask", 4 * 1024, this, MQTT_TASK_PRIORITY, NULL, 0 ) !=
+            if ( xTaskCreatePinnedToCore( mqttTask, "mqttTask", 6 * 1024, this, MQTT_TASK_PRIORITY, NULL, 0 ) !=
                  pdPASS )
             {
                 Log::error( "Failed to create mqtt task" );
