@@ -103,14 +103,42 @@ namespace AsnPlus
             _runtime.temperature = _temperature.read();
             _runtime.pressure    = _pressure.read();
 
+            if ( _runtime.flow.timestamp == 0 )
+            {
+                return;
+            }
+
+            // Control task can run faster than data source polling; ignore repeated samples.
+            if ( _runtime.flow.timestamp == _lastProcessedFlowTimestamp )
+            {
+                return;
+            }
+
+            DataSource::Base::Sample prevObservedFlow = _lastObservedFlowSample;
+            _lastProcessedFlowTimestamp               = _runtime.flow.timestamp;
+
             if ( ! _eventActive )
             {
                 if ( _runtime.flow.value == 0 )
                 {
+                    _lastObservedFlowSample = _runtime.flow;
                     return;
                 }
 
-                startEvent( _runtime.flow.timestamp );
+                uint64_t startPulseSnapshot = _runtime.flow.volume;
+                uint16_t startPulsesPerLitre = _runtime.flow.pulsesPerLitre;
+
+                // Capture event baseline from the last zero-flow sample to avoid dropping first pulse batch.
+                if ( prevObservedFlow.timestamp != 0 && prevObservedFlow.value == 0 )
+                {
+                    startPulseSnapshot = prevObservedFlow.volume;
+                    if ( startPulsesPerLitre == 0 )
+                    {
+                        startPulsesPerLitre = prevObservedFlow.pulsesPerLitre;
+                    }
+                }
+
+                startEvent( _runtime.flow.timestamp, startPulseSnapshot, startPulsesPerLitre );
             }
 
             if ( _eventActive )
@@ -134,9 +162,11 @@ namespace AsnPlus
                     _zeroFlowStartMs = 0;
                 }
             }
+
+            _lastObservedFlowSample = _runtime.flow;
         }
 
-        bool startEvent( uint64_t timestamp )
+        bool startEvent( uint64_t timestamp, uint64_t startPulseSnapshot, uint16_t pulsesPerLitre )
         {
             Log::debug( "Starting event" );
             if ( _eventActive )
@@ -161,6 +191,9 @@ namespace AsnPlus
             _currentEvent->startTimestamp = timestamp;
 
             _volumeAcc                    = 0;
+            _volumeFromSampleAccMl        = 0;
+            _volumeStartSamplePulses      = startPulseSnapshot;
+            _volumeSamplePulsesPerLitre   = ( pulsesPerLitre > 0 ) ? pulsesPerLitre : _runtime.flow.pulsesPerLitre;
             _prevFlowSample               = {};
             _dsWindowStart                = 0;
             _dsFlowAcc                    = 0;
@@ -196,8 +229,35 @@ namespace AsnPlus
             // Flush remaining downsample window
             _flushDownsampleWindow();
 
+            uint64_t endSamplePulses =
+                ( _prevFlowSample.timestamp != 0 ) ? _prevFlowSample.volume : _runtime.flow.volume;
+            uint16_t pulsesPerLitre =
+                ( _prevFlowSample.pulsesPerLitre > 0 ) ? _prevFlowSample.pulsesPerLitre : _volumeSamplePulsesPerLitre;
+
+            uint64_t pulseDelta = 0;
+            if ( endSamplePulses >= _volumeStartSamplePulses )
+            {
+                pulseDelta = endSamplePulses - _volumeStartSamplePulses;
+            }
+            else
+            {
+                Log::warn(
+                    "Pulse counter moved backwards: start=%llu, end=%llu",
+                    _volumeStartSamplePulses,
+                    endSamplePulses
+                );
+            }
+
+            if ( pulsesPerLitre > 0 && pulseDelta > 0 )
+            {
+                _volumeFromSampleAccMl = ( pulseDelta * ML_PER_LITRE ) / pulsesPerLitre;
+            }
+
+            uint32_t volumeFromFlowMl = static_cast< uint32_t >( _volumeAcc / MS_PER_MINUTE );
+            uint32_t volumeFromSampleMl = static_cast< uint32_t >( _volumeFromSampleAccMl );
+
             _currentEvent->endTimestamp = timestamp;
-            _currentEvent->volume       = static_cast< uint32_t >( _volumeAcc / MS_PER_MINUTE );
+            _currentEvent->volume       = volumeFromFlowMl;
 
             if ( _onEventEnd.is_valid() )
             {
@@ -207,11 +267,13 @@ namespace AsnPlus
             _eventHistory.push( *_currentEvent );
             _lastSeqNum = static_cast< uint32_t >( _currentEvent->sequenceNumber );
 
-            Log::info(
-                "Event: startTimestamp=%llu, endTimestamp=%llu, volume=%u, type=%u, historySlots=%u",
+            Log::warn(
+                "Event: startTimestamp=%llu, endTimestamp=%llu, pulses=%llu, volumeFlow=%u, volumeSample=%u, type=%u, historySlots=%u",
                 _currentEvent->startTimestamp,
                 _currentEvent->endTimestamp,
-                _currentEvent->volume,
+                pulseDelta,
+                volumeFromFlowMl,
+                volumeFromSampleMl,
                 static_cast< uint8_t >( _currentEvent->type ),
                 static_cast< uint32_t >( _dsOutIdx )
             );
@@ -228,6 +290,7 @@ namespace AsnPlus
 
         static constexpr uint32_t MS_PER_MINUTE        = 60'000;
         static constexpr uint32_t DOWNSAMPLE_WINDOW_MS = 200;
+        static constexpr uint32_t ML_PER_LITRE         = 1000;
 
         uint32_t & _tapTimeoutMs;
         Runtime &  _runtime;
@@ -247,8 +310,13 @@ namespace AsnPlus
         Delegate< void( Event & ) > _onEventEnd;
 
         // MARK: IncrementalVolume
-        uint64_t                 _volumeAcc      = 0;
-        DataSource::Base::Sample _prevFlowSample = {};
+        uint64_t                 _volumeAcc             = 0;
+        uint64_t                 _volumeFromSampleAccMl = 0;
+        uint64_t                 _volumeStartSamplePulses = 0;
+        uint16_t                 _volumeSamplePulsesPerLitre = 0;
+        DataSource::Base::Sample _prevFlowSample        = {};
+        uint64_t                 _lastProcessedFlowTimestamp = 0;
+        DataSource::Base::Sample _lastObservedFlowSample = {};
 
         // MARK: IncrementalDownsampling
         uint64_t _dsWindowStart                  = 0;
@@ -270,6 +338,7 @@ namespace AsnPlus
                 uint64_t dt = flow.timestamp - _prevFlowSample.timestamp;
                 _volumeAcc += static_cast< uint64_t >( _prevFlowSample.value ) * dt;
             }
+
             _prevFlowSample = flow;
 
             // Incremental downsampling: accumulate into current window

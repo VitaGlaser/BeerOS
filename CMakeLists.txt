@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(revosoft-beerhouse-firmware)
+project(BeerOS_0_6_1)
 
 set(ASN_CUSTOMER_EXPORT_COMPONENT customer-export)
 

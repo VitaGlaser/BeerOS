@@ -16,6 +16,9 @@ namespace AsnPlus::Expander
     class IRegisterContext
     {
     public:
+        static constexpr const char TAG[] = "RegisterContext";
+        using Log                         = Logger< 0, TAG >;
+
         IRegisterContext( Transport & transport ) : _transport( transport ) {}
 
         ~IRegisterContext()                                      = default;
@@ -29,17 +32,35 @@ namespace AsnPlus::Expander
         {
             uint16_t value = 0;
             bool ok = _transport.readRegister( address, value );
-            if (!ok) {
-                //TODO: error handling
+            if ( !ok )
+            {
+                Log::warn( "SPI read FAILED: reg=0x%04X", address );
+                return value;
             }
-            return value;  
+
+            // Repeated-byte pattern (e.g. 0xC5C5) — characteristic SPI MISO glitch when
+            // the expander is internally latching the counter register during the read.
+            // Retry once immediately; the second read is virtually always clean.
+            if ( ( value >> 8 ) == ( value & 0xFF ) && value != 0 )
+            {
+                uint16_t retry = 0;
+                bool retryOk = _transport.readRegister( address, retry );
+                if ( retryOk && ( ( retry >> 8 ) != ( retry & 0xFF ) || retry == 0 ) )
+                {
+                    Log::debug( "SPI glitch recovered: reg=0x%04X bad=0x%04X ok=0x%04X", address, value, retry );
+                    return retry;
+                }
+                Log::warn( "SPI read suspicious: reg=0x%04X val=0x%04X (repeated byte 0x%02X), retry=0x%04X",
+                           address, value, value & 0xFF, retry );
+            }
+            return value;
         }
 
         void writeRegister( uint16_t address, uint16_t data ) 
         { 
             bool ok = _transport.writeRegister( address, data ); 
             if (!ok) {
-                // TODO: error handling
+                Log::warn( "Write failed for register 0x%04X, data=0x%04X", address, data );
             }
         }
 
