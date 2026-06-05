@@ -29,7 +29,7 @@ namespace AsnPlus
 
         struct Event
         {
-            static constexpr uint16_t HISTORY_SIZE = 50;
+            static constexpr uint16_t HISTORY_SIZE = 200;
 
             enum class EventType : uint8_t
             {
@@ -53,6 +53,7 @@ namespace AsnPlus
             uint16_t avgConductivity = 0;
 
             uint32_t flowProfile[ HISTORY_SIZE ] {};
+            uint32_t volumeProfile[ HISTORY_SIZE ] {};
             uint32_t pressureProfile[ HISTORY_SIZE ] {};
         };
 
@@ -89,6 +90,41 @@ namespace AsnPlus
 
             Log::info( "Initialized" );
             return true;
+        }
+
+        uint32_t getCurrentPouredMl() const
+        {
+            if ( ! _eventActive )
+            {
+                return 0;
+            }
+
+            uint64_t volumeAccNow = _volumeAcc;
+            if ( _prevFlowSample.timestamp != 0 && _runtime.flow.timestamp >= _prevFlowSample.timestamp )
+            {
+                uint64_t dt = _runtime.flow.timestamp - _prevFlowSample.timestamp;
+                volumeAccNow += static_cast< uint64_t >( _prevFlowSample.value ) * dt;
+            }
+
+            uint32_t volumeFromFlowMl = static_cast< uint32_t >( volumeAccNow / MS_PER_MINUTE );
+
+            uint64_t endSamplePulses = (_runtime.flow.timestamp != 0) ? _runtime.flow.volume : _prevFlowSample.volume;
+            uint16_t pulsesPerLitre =
+                ( _runtime.flow.pulsesPerLitre > 0 ) ? _runtime.flow.pulsesPerLitre : _volumeSamplePulsesPerLitre;
+
+            uint64_t pulseDelta = 0;
+            if ( endSamplePulses >= _volumeStartSamplePulses )
+            {
+                pulseDelta = endSamplePulses - _volumeStartSamplePulses;
+            }
+
+            uint32_t volumeFromSampleMl = 0;
+            if ( pulsesPerLitre > 0 && pulseDelta > 0 )
+            {
+                volumeFromSampleMl = static_cast< uint32_t >( ( pulseDelta * ML_PER_LITRE ) / pulsesPerLitre );
+            }
+
+            return ( volumeFromSampleMl > 0 ) ? volumeFromSampleMl : volumeFromFlowMl;
         }
 
         void poll()
@@ -145,6 +181,11 @@ namespace AsnPlus
             {
                 _addSample( _runtime.flow, _runtime.temperature, _runtime.pressure );
 
+                if ( _runtime.flow.value > 0 )
+                {
+                    _lastNonZeroFlowSample = _runtime.flow;
+                }
+
                 if ( _runtime.flow.value == 0 )
                 {
                     if ( _zeroFlowStartMs == 0 )
@@ -195,12 +236,18 @@ namespace AsnPlus
             _volumeStartSamplePulses      = startPulseSnapshot;
             _volumeSamplePulsesPerLitre   = ( pulsesPerLitre > 0 ) ? pulsesPerLitre : _runtime.flow.pulsesPerLitre;
             _prevFlowSample               = {};
+            _lastNonZeroFlowSample        = {};
             _dsWindowStart                = 0;
             _dsFlowAcc                    = 0;
             _dsTempAcc                    = 0;
             _dsPressAcc                   = 0;
             _dsCount                      = 0;
             _dsOutIdx                     = 0;
+
+            if ( _runtime.flow.value > 0 )
+            {
+                _lastNonZeroFlowSample = _runtime.flow;
+            }
 
             Log::info( "Event started" );
             return true;
@@ -219,20 +266,24 @@ namespace AsnPlus
             _eventActive     = false;
             _zeroFlowStartMs = 0;
 
+            const uint64_t effectiveEndTimestamp =
+                ( _lastNonZeroFlowSample.timestamp > 0 ) ? _lastNonZeroFlowSample.timestamp : timestamp;
+
             // Finalize volume: add contribution from last sample to endTimestamp
-            if ( _prevFlowSample.timestamp != 0 )
+            if ( _prevFlowSample.timestamp != 0 && effectiveEndTimestamp >= _prevFlowSample.timestamp )
             {
-                uint64_t dt = timestamp - _prevFlowSample.timestamp;
+                uint64_t dt = effectiveEndTimestamp - _prevFlowSample.timestamp;
                 _volumeAcc += static_cast< uint64_t >( _prevFlowSample.value ) * dt;
             }
 
             // Flush remaining downsample window
             _flushDownsampleWindow();
 
-            uint64_t endSamplePulses =
-                ( _prevFlowSample.timestamp != 0 ) ? _prevFlowSample.volume : _runtime.flow.volume;
+            uint64_t endSamplePulses = ( _lastNonZeroFlowSample.timestamp != 0 ) ? _lastNonZeroFlowSample.volume
+                                                                                  : _runtime.flow.volume;
             uint16_t pulsesPerLitre =
-                ( _prevFlowSample.pulsesPerLitre > 0 ) ? _prevFlowSample.pulsesPerLitre : _volumeSamplePulsesPerLitre;
+                ( _lastNonZeroFlowSample.pulsesPerLitre > 0 ) ? _lastNonZeroFlowSample.pulsesPerLitre
+                                                               : _volumeSamplePulsesPerLitre;
 
             uint64_t pulseDelta = 0;
             if ( endSamplePulses >= _volumeStartSamplePulses )
@@ -256,7 +307,7 @@ namespace AsnPlus
             uint32_t volumeFromFlowMl = static_cast< uint32_t >( _volumeAcc / MS_PER_MINUTE );
             uint32_t volumeFromSampleMl = static_cast< uint32_t >( _volumeFromSampleAccMl );
 
-            _currentEvent->endTimestamp = timestamp;
+            _currentEvent->endTimestamp = effectiveEndTimestamp;
             _currentEvent->volume       = volumeFromFlowMl;
 
             if ( _onEventEnd.is_valid() )
@@ -289,7 +340,7 @@ namespace AsnPlus
         using Log                                      = Logger< ProjectConfig::LOG_LEVEL_MEASUREMENT, TAG >;
 
         static constexpr uint32_t MS_PER_MINUTE        = 60'000;
-        static constexpr uint32_t DOWNSAMPLE_WINDOW_MS = 200;
+        static constexpr uint32_t DOWNSAMPLE_WINDOW_MS = 100;
         static constexpr uint32_t ML_PER_LITRE         = 1000;
 
         uint32_t & _tapTimeoutMs;
@@ -315,6 +366,7 @@ namespace AsnPlus
         uint64_t                 _volumeStartSamplePulses = 0;
         uint16_t                 _volumeSamplePulsesPerLitre = 0;
         DataSource::Base::Sample _prevFlowSample        = {};
+        DataSource::Base::Sample _lastNonZeroFlowSample = {};
         uint64_t                 _lastProcessedFlowTimestamp = 0;
         DataSource::Base::Sample _lastObservedFlowSample = {};
 
@@ -366,6 +418,7 @@ namespace AsnPlus
             // TODO(DK): Add average temperature and conductivity to event
 
             _currentEvent->flowProfile[ _dsOutIdx ]     = static_cast< uint32_t >( _dsFlowAcc / _dsCount );
+            _currentEvent->volumeProfile[ _dsOutIdx ]   = getCurrentPouredMl();
             _currentEvent->pressureProfile[ _dsOutIdx ] = static_cast< uint32_t >( _dsPressAcc / _dsCount );
             ++_dsOutIdx;
 

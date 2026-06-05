@@ -86,6 +86,15 @@ namespace AsnPlus::Cloud
                 }
             }
 
+            for ( uint8_t i = 0; i < 4; ++i )
+            {
+                if ( ! _channelProfileWebhookRequestPtrs[ i ]->initialize() )
+                {
+                    Log::error( "Failed to initialize channelProfileWebhookRequest[%u]", i );
+                    return false;
+                }
+            }
+
             if ( ! _timeConfigPostRequest.initialize() )
             {
                 Log::error( "Failed to initialize timeConfigPostRequest" );
@@ -212,6 +221,7 @@ namespace AsnPlus::Cloud
             for ( uint8_t i = 0; i < 4; ++i )
             {
                 _channelEventRequestPtrs[ i ]->send();
+                _channelProfileWebhookRequestPtrs[ i ]->send();
             }
         }
 
@@ -242,6 +252,7 @@ namespace AsnPlus::Cloud
             for ( uint8_t i = 0; i < 4; ++i )
             {
                 _channelEventRequestPtrs[ i ]->setClient( client );
+                _channelProfileWebhookRequestPtrs[ i ]->setClient( client );
             }
 
             _timeConfigPostRequest.setClient( client );
@@ -260,7 +271,7 @@ namespace AsnPlus::Cloud
         static constexpr const char TAG[]     = "RequestManager";
         using Log                             = Logger< ProjectConfig::LOG_LEVEL_CLOUD, TAG >;
 
-        static constexpr uint16_t BUFFER_SIZE = 4096;
+        static constexpr uint16_t BUFFER_SIZE = 12288;
 
         // ─── Infrastructure ───────────────────────────────────────────────────
 
@@ -388,28 +399,40 @@ namespace AsnPlus::Cloud
             _database.eventHistory0,
             _channelEventRequestConfigs[ 0 ],
             _buffer,
-            _responseBuffer
+            _responseBuffer,
+            false,
+            true,
+            false
         };
 
         ChannelEventRequest _channelEventRequest1 {
             _database.eventHistory1,
             _channelEventRequestConfigs[ 1 ],
             _buffer,
-            _responseBuffer
+            _responseBuffer,
+            false,
+            true,
+            false
         };
 
         ChannelEventRequest _channelEventRequest2 {
             _database.eventHistory2,
             _channelEventRequestConfigs[ 2 ],
             _buffer,
-            _responseBuffer
+            _responseBuffer,
+            false,
+            true,
+            false
         };
 
         ChannelEventRequest _channelEventRequest3 {
             _database.eventHistory3,
             _channelEventRequestConfigs[ 3 ],
             _buffer,
-            _responseBuffer
+            _responseBuffer,
+            false,
+            true,
+            false
         };
 
         Array< ChannelEventRequest *, 4 > _channelEventRequestPtrs {
@@ -417,6 +440,62 @@ namespace AsnPlus::Cloud
             &_channelEventRequest1,
             &_channelEventRequest2,
             &_channelEventRequest3
+        };
+
+        Array< IFirestoreRequest::Config, 4 > _channelProfileWebhookRequestConfigs {
+            {
+             { PROFILE_WEBHOOK_URL, _database.manufactureInfo.uid, "", 0 },
+             { PROFILE_WEBHOOK_URL, _database.manufactureInfo.uid, "", 1 },
+             { PROFILE_WEBHOOK_URL, _database.manufactureInfo.uid, "", 2 },
+             { PROFILE_WEBHOOK_URL, _database.manufactureInfo.uid, "", 3 },
+             }
+        };
+
+        ChannelEventRequest _channelProfileWebhookRequest0 {
+            _database.eventHistory0,
+            _channelProfileWebhookRequestConfigs[ 0 ],
+            _buffer,
+            _responseBuffer,
+            true,
+            false,
+            true
+        };
+
+        ChannelEventRequest _channelProfileWebhookRequest1 {
+            _database.eventHistory1,
+            _channelProfileWebhookRequestConfigs[ 1 ],
+            _buffer,
+            _responseBuffer,
+            true,
+            false,
+            true
+        };
+
+        ChannelEventRequest _channelProfileWebhookRequest2 {
+            _database.eventHistory2,
+            _channelProfileWebhookRequestConfigs[ 2 ],
+            _buffer,
+            _responseBuffer,
+            true,
+            false,
+            true
+        };
+
+        ChannelEventRequest _channelProfileWebhookRequest3 {
+            _database.eventHistory3,
+            _channelProfileWebhookRequestConfigs[ 3 ],
+            _buffer,
+            _responseBuffer,
+            true,
+            false,
+            true
+        };
+
+        Array< ChannelEventRequest *, 4 > _channelProfileWebhookRequestPtrs {
+            &_channelProfileWebhookRequest0,
+            &_channelProfileWebhookRequest1,
+            &_channelProfileWebhookRequest2,
+            &_channelProfileWebhookRequest3
         };
 
         // ─── Upload requests (POST) ───────────────────────────────────────────

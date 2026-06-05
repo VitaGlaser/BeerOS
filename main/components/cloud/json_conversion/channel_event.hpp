@@ -19,11 +19,12 @@ namespace AsnPlus::Cloud
         static constexpr const char SYNCED_TAG[]           = "synced";
         static constexpr const char EVENT_TYPE_TAG[]       = "eventType";
         static constexpr const char VOLUME_TAG[]           = "volume";
+        static constexpr const char PULSE_COUNT_TAG[]      = "pulseCount";
         static constexpr const char CLASSIFICATION_TAG[]   = "classification";
         static constexpr const char AVG_TEMPERATURE_TAG[]  = "avgTemperature";
         static constexpr const char AVG_CONDUCTIVITY_TAG[] = "avgConductivity";
         static constexpr const char FLOW_HISTORY_TAG[]     = "flowProfile";
-        static constexpr const char PRESS_HISTORY_TAG[]    = "pressureProfile";
+        static constexpr const char VOLUME_HISTORY_TAG[]   = "volumeProfile";
     }    // namespace ChannelEventJson
 
     namespace ChannelEventRequestJson
@@ -33,7 +34,7 @@ namespace AsnPlus::Cloud
 
     // MARK: toJson
 
-    void toJson( EventMonitor::Event & event, cJSON * json )
+    void toJson( EventMonitor::Event & event, cJSON * json, bool includeProfiles = true )
     {
         cJSON_AddNumberToObject(
             json, ChannelEventJson::CONFIG_TIMESTAMP_TAG, static_cast< double >( event.configTimestamp )
@@ -48,6 +49,7 @@ namespace AsnPlus::Cloud
         cJSON_AddNumberToObject( json, ChannelEventJson::START_TS_TAG, static_cast< double >( event.startTimestamp ) );
         cJSON_AddNumberToObject( json, ChannelEventJson::END_TS_TAG, static_cast< double >( event.endTimestamp ) );
         cJSON_AddNumberToObject( json, ChannelEventJson::VOLUME_TAG, static_cast< double >( event.volume ) );
+        cJSON_AddNumberToObject( json, ChannelEventJson::PULSE_COUNT_TAG, static_cast< double >( event.pulseCount ) );
         cJSON_AddNumberToObject(
             json, ChannelEventJson::CLASSIFICATION_TAG, static_cast< double >( event.classification )
         );
@@ -58,23 +60,26 @@ namespace AsnPlus::Cloud
             json, ChannelEventJson::AVG_CONDUCTIVITY_TAG, static_cast< double >( event.avgConductivity )
         );
 
-        cJSON * flowHistoryJson = cJSON_CreateArray();
-        for ( uint16_t i = 0; i < EventMonitor::Event::HISTORY_SIZE; ++i )
+        if ( includeProfiles )
         {
-            cJSON_AddItemToArray(
-                flowHistoryJson, cJSON_CreateNumber( static_cast< double >( event.flowProfile[ i ] ) )
-            );
-        }
-        cJSON_AddItemToObject( json, ChannelEventJson::FLOW_HISTORY_TAG, flowHistoryJson );
+            cJSON * flowHistoryJson = cJSON_CreateArray();
+            for ( uint16_t i = 0; i < EventMonitor::Event::HISTORY_SIZE; ++i )
+            {
+                cJSON_AddItemToArray(
+                    flowHistoryJson, cJSON_CreateNumber( static_cast< double >( event.flowProfile[ i ] ) )
+                );
+            }
+            cJSON_AddItemToObject( json, ChannelEventJson::FLOW_HISTORY_TAG, flowHistoryJson );
 
-        cJSON * pressHistoryJson = cJSON_CreateArray();
-        for ( uint16_t i = 0; i < EventMonitor::Event::HISTORY_SIZE; ++i )
-        {
-            cJSON_AddItemToArray(
-                pressHistoryJson, cJSON_CreateNumber( static_cast< double >( event.pressureProfile[ i ] ) )
-            );
+            cJSON * volumeHistoryJson = cJSON_CreateArray();
+            for ( uint16_t i = 0; i < EventMonitor::Event::HISTORY_SIZE; ++i )
+            {
+                cJSON_AddItemToArray(
+                    volumeHistoryJson, cJSON_CreateNumber( static_cast< double >( event.volumeProfile[ i ] ) )
+                );
+            }
+            cJSON_AddItemToObject( json, ChannelEventJson::VOLUME_HISTORY_TAG, volumeHistoryJson );
         }
-        cJSON_AddItemToObject( json, ChannelEventJson::PRESS_HISTORY_TAG, pressHistoryJson );
     }
 
     struct ChannelHistoryRequest

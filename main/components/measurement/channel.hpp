@@ -90,6 +90,7 @@ namespace AsnPlus
         struct Runtime : AsnPlus::Runtime
         {
             uint64_t tankLevel                                                             = 0;    // ml
+            uint64_t volume                                                                = 0;    // ml
             uint16_t flow                                                                  = 0;    // ml/min
             uint16_t temperature                                                           = 0;    // celsius * 10
             uint16_t pressure                                                              = 0;
@@ -152,6 +153,7 @@ namespace AsnPlus
 
             _eventMonitor.poll();
 
+            _runtime.volume      = _eventMonitor.getCurrentPouredMl();
             _runtime.flow        = _eventMonitorRuntime.flow.value;
             _runtime.temperature = _eventMonitorRuntime.temperature.value;
             _runtime.pressure    = _eventMonitorRuntime.pressure.value;
@@ -355,6 +357,8 @@ namespace AsnPlus
 
         void _onEventEnd( EventMonitor::Event & event )
         {
+            int8_t classificationIndex = -1;
+
             // TODO(DK): This should categorize beverage in the event and add the information the eventMonitor doesnt
             // know about - like beverage type and size
             if ( _config.cleaningVolumeThr > 0 && event.volume >= _config.cleaningVolumeThr )
@@ -366,33 +370,51 @@ namespace AsnPlus
                     event.volume,
                     _config.cleaningVolumeThr
                 );
-                return;
             }
-
-            const int8_t index = _determineBeerSizeIndex( event.volume );
-            if ( index < 0 )
+            else
             {
-                event.type = EventMonitor::Event::EventType::UNKNOWN;
-                Log::warn(
-                    " (%u) Event volume %u does not match any classification, counting as unrecognized",
-                    _index,
-                    event.volume
-                );
-                ++_runtime.unrecognizedEvents.count;
-                _runtime.unrecognizedEvents.volume += event.volume;
-                return;
+                const int8_t index = _determineBeerSizeIndex( event.volume );
+                if ( index < 0 )
+                {
+                    event.type = EventMonitor::Event::EventType::UNKNOWN;
+                    Log::warn(
+                        " (%u) Event volume %u does not match any classification, counting as unrecognized",
+                        _index,
+                        event.volume
+                    );
+                    ++_runtime.unrecognizedEvents.count;
+                    _runtime.unrecognizedEvents.volume += event.volume;
+                }
+                else
+                {
+                    event.type            = EventMonitor::Event::EventType::BEVERAGE;
+                    classificationIndex   = index;
+
+                    Log::info(
+                        " (%u) Event assigned to classification index %d (volume=%u)",
+                        _index,
+                        static_cast< int >( index ),
+                        event.volume
+                    );
+
+                    auto & state = _runtime.classificationState[ static_cast< uint8_t >( index ) ];
+                    ++state.count;
+                    state.volume += event.volume;
+                }
             }
 
-            event.type = EventMonitor::Event::EventType::BEVERAGE;
-            Log::info(
-                " (%u) Event assigned to classification index %d (volume=%u)",
+            Log::warn(
+                "EVT cloud_ready ch=%u seq=%llu startTs=%llu endTs=%llu volumeMl=%u type=%u classification=%u classIndex=%d tapTimeoutMs=%u",
                 _index,
-                static_cast< int >( index ),
-                event.volume
+                event.sequenceNumber,
+                event.startTimestamp,
+                event.endTimestamp,
+                event.volume,
+                static_cast< uint8_t >( event.type ),
+                event.classification,
+                static_cast< int >( classificationIndex ),
+                _config.tapTimeoutMs
             );
-            auto & state = _runtime.classificationState[ static_cast< uint8_t >( index ) ];
-            ++state.count;
-            state.volume += event.volume;
         }
     };
 }    // namespace AsnPlus

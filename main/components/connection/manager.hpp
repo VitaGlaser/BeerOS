@@ -326,7 +326,7 @@ namespace AsnPlus::Connection
                 if ( _lastActiveTransport != ActiveTransport::ETH )
                 {
                     Log::debug( "Setting Ethernet client" );
-                    _requestManager.setClient( &_wifiClient );
+                    _requestManager.setClient( &_ethClient );
                     _requestManager.setStateTimerInterval( _database.networkConfig.requestConfig.ethStatusInterval );
                     _lastActiveTransport = ActiveTransport::ETH;
                 }
