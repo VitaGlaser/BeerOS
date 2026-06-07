@@ -124,6 +124,7 @@ namespace AsnPlus
             _pressure( config.pressureConfig ),
             _eventMonitor(
                 _config.tapTimeoutMs,
+                DataSource::Manager::DEFAULT_PULSES_PER_LITRE,
                 _eventMonitorRuntime,
                 _flow,
                 _temperature,

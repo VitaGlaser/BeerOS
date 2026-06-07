@@ -13,8 +13,7 @@ namespace AsnPlus::DataSource
         {
             uint64_t timestamp = 0;
             uint32_t value     = 0;
-            uint64_t volume    = 0;
-            uint16_t pulsesPerLitre = 0;
+            uint64_t pulse     = 0;
         };
 
         struct DebugInfo
@@ -60,13 +59,12 @@ namespace AsnPlus::DataSource
 
         mutable Mutex _sampleMux {};
 
-        void _writeSample( uint64_t timestamp, uint32_t value, uint64_t volume = 0, uint16_t pulsesPerLitre = 0 )
+        void _writeSample( uint64_t timestamp, uint32_t value, uint64_t pulse = 0 )
         {
             LockGuard guard( _sampleMux );
-            _sample.timestamp      = timestamp;
-            _sample.value          = value;
-            _sample.volume         = volume;
-            _sample.pulsesPerLitre = pulsesPerLitre;
+            _sample.timestamp = timestamp;
+            _sample.value     = value;
+            _sample.pulse     = pulse;
         }
 
         void _clearSample()

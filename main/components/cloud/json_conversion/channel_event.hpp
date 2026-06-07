@@ -24,7 +24,9 @@ namespace AsnPlus::Cloud
         static constexpr const char AVG_TEMPERATURE_TAG[]  = "avgTemperature";
         static constexpr const char AVG_CONDUCTIVITY_TAG[] = "avgConductivity";
         static constexpr const char FLOW_HISTORY_TAG[]     = "flowProfile";
-        static constexpr const char VOLUME_HISTORY_TAG[]   = "volumeProfile";
+        static constexpr const char VOLUME_FLOW_HISTORY_TAG[]  = "volumeFlowProfile";
+        static constexpr const char VOLUME_PULSE_HISTORY_TAG[] = "volumePulseProfile";
+        static constexpr const char PULSE_HISTORY_TAG[]        = "pulseProfile";
     }    // namespace ChannelEventJson
 
     namespace ChannelEventRequestJson
@@ -71,14 +73,34 @@ namespace AsnPlus::Cloud
             }
             cJSON_AddItemToObject( json, ChannelEventJson::FLOW_HISTORY_TAG, flowHistoryJson );
 
-            cJSON * volumeHistoryJson = cJSON_CreateArray();
+            cJSON * volumeFlowHistoryJson = cJSON_CreateArray();
             for ( uint16_t i = 0; i < EventMonitor::Event::HISTORY_SIZE; ++i )
             {
                 cJSON_AddItemToArray(
-                    volumeHistoryJson, cJSON_CreateNumber( static_cast< double >( event.volumeProfile[ i ] ) )
+                    volumeFlowHistoryJson,
+                    cJSON_CreateNumber( static_cast< double >( event.volumeFlowProfile[ i ] ) )
                 );
             }
-            cJSON_AddItemToObject( json, ChannelEventJson::VOLUME_HISTORY_TAG, volumeHistoryJson );
+            cJSON_AddItemToObject( json, ChannelEventJson::VOLUME_FLOW_HISTORY_TAG, volumeFlowHistoryJson );
+
+            cJSON * volumePulseHistoryJson = cJSON_CreateArray();
+            for ( uint16_t i = 0; i < EventMonitor::Event::HISTORY_SIZE; ++i )
+            {
+                cJSON_AddItemToArray(
+                    volumePulseHistoryJson,
+                    cJSON_CreateNumber( static_cast< double >( event.volumePulseProfile[ i ] ) )
+                );
+            }
+            cJSON_AddItemToObject( json, ChannelEventJson::VOLUME_PULSE_HISTORY_TAG, volumePulseHistoryJson );
+
+            cJSON * pulseHistoryJson = cJSON_CreateArray();
+            for ( uint16_t i = 0; i < EventMonitor::Event::HISTORY_SIZE; ++i )
+            {
+                cJSON_AddItemToArray(
+                    pulseHistoryJson, cJSON_CreateNumber( static_cast< double >( event.pulseProfile[ i ] ) )
+                );
+            }
+            cJSON_AddItemToObject( json, ChannelEventJson::PULSE_HISTORY_TAG, pulseHistoryJson );
         }
     }
 

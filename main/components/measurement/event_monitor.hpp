@@ -29,7 +29,7 @@ namespace AsnPlus
 
         struct Event
         {
-            static constexpr uint16_t HISTORY_SIZE = 200;
+            static constexpr uint16_t HISTORY_SIZE = 100;
 
             enum class EventType : uint8_t
             {
@@ -46,6 +46,7 @@ namespace AsnPlus
             bool      synced         = false;
             EventType type           = EventType::UNKNOWN;
             uint32_t  volume         = 0;
+            uint64_t  pulseCount     = 0;
 
             uint8_t classification   = 0;
 
@@ -53,12 +54,14 @@ namespace AsnPlus
             uint16_t avgConductivity = 0;
 
             uint32_t flowProfile[ HISTORY_SIZE ] {};
-            uint32_t volumeProfile[ HISTORY_SIZE ] {};
-            uint32_t pressureProfile[ HISTORY_SIZE ] {};
+            uint32_t volumeFlowProfile[ HISTORY_SIZE ] {};
+            uint32_t volumePulseProfile[ HISTORY_SIZE ] {};
+            uint32_t pulseProfile[ HISTORY_SIZE ] {};
         };
 
         EventMonitor(
             uint32_t &                  tapTimeoutMs,
+            uint16_t                    flowPulsesPerLitre,
             Runtime &                   runtime,
             Sensor &                    flow,
             Sensor &                    temperature,
@@ -68,6 +71,10 @@ namespace AsnPlus
             Delegate< void( Event & ) > onEventEnd = {}
         ) :
             _tapTimeoutMs( tapTimeoutMs ),
+            _flowPulsesPerLitre(
+                ( flowPulsesPerLitre > 0 ) ? flowPulsesPerLitre : DEFAULT_FLOW_PULSES_PER_LITRE
+            ),
+            _usedDefaultFlowPulsesPerLitre( flowPulsesPerLitre == 0 ),
             _runtime( runtime ),
             _flow( flow ),
             _temperature( temperature ),
@@ -88,6 +95,14 @@ namespace AsnPlus
                 return false;
             }
 
+            if ( _usedDefaultFlowPulsesPerLitre )
+            {
+                Log::warn(
+                    "flowPulsesPerLitre is 0, using default %u",
+                    static_cast< unsigned >( DEFAULT_FLOW_PULSES_PER_LITRE )
+                );
+            }
+
             Log::info( "Initialized" );
             return true;
         }
@@ -106,22 +121,12 @@ namespace AsnPlus
                 volumeAccNow += static_cast< uint64_t >( _prevFlowSample.value ) * dt;
             }
 
-            uint32_t volumeFromFlowMl = static_cast< uint32_t >( volumeAccNow / MS_PER_MINUTE );
-
-            uint64_t endSamplePulses = (_runtime.flow.timestamp != 0) ? _runtime.flow.volume : _prevFlowSample.volume;
-            uint16_t pulsesPerLitre =
-                ( _runtime.flow.pulsesPerLitre > 0 ) ? _runtime.flow.pulsesPerLitre : _volumeSamplePulsesPerLitre;
-
-            uint64_t pulseDelta = 0;
-            if ( endSamplePulses >= _volumeStartSamplePulses )
-            {
-                pulseDelta = endSamplePulses - _volumeStartSamplePulses;
-            }
+            uint32_t volumeFromFlowMl = _divideRoundNearest( volumeAccNow, MS_PER_MINUTE );
 
             uint32_t volumeFromSampleMl = 0;
-            if ( pulsesPerLitre > 0 && pulseDelta > 0 )
+            if ( _pulseAcc > 0 )
             {
-                volumeFromSampleMl = static_cast< uint32_t >( ( pulseDelta * ML_PER_LITRE ) / pulsesPerLitre );
+                volumeFromSampleMl = _divideRoundNearest( _pulseAcc * ML_PER_LITRE, _flowPulsesPerLitre );
             }
 
             return ( volumeFromSampleMl > 0 ) ? volumeFromSampleMl : volumeFromFlowMl;
@@ -161,20 +166,7 @@ namespace AsnPlus
                     return;
                 }
 
-                uint64_t startPulseSnapshot = _runtime.flow.volume;
-                uint16_t startPulsesPerLitre = _runtime.flow.pulsesPerLitre;
-
-                // Capture event baseline from the last zero-flow sample to avoid dropping first pulse batch.
-                if ( prevObservedFlow.timestamp != 0 && prevObservedFlow.value == 0 )
-                {
-                    startPulseSnapshot = prevObservedFlow.volume;
-                    if ( startPulsesPerLitre == 0 )
-                    {
-                        startPulsesPerLitre = prevObservedFlow.pulsesPerLitre;
-                    }
-                }
-
-                startEvent( _runtime.flow.timestamp, startPulseSnapshot, startPulsesPerLitre );
+                startEvent( _runtime.flow.timestamp );
             }
 
             if ( _eventActive )
@@ -207,7 +199,7 @@ namespace AsnPlus
             _lastObservedFlowSample = _runtime.flow;
         }
 
-        bool startEvent( uint64_t timestamp, uint64_t startPulseSnapshot, uint16_t pulsesPerLitre )
+        bool startEvent( uint64_t timestamp )
         {
             Log::debug( "Starting event" );
             if ( _eventActive )
@@ -233,14 +225,13 @@ namespace AsnPlus
 
             _volumeAcc                    = 0;
             _volumeFromSampleAccMl        = 0;
-            _volumeStartSamplePulses      = startPulseSnapshot;
-            _volumeSamplePulsesPerLitre   = ( pulsesPerLitre > 0 ) ? pulsesPerLitre : _runtime.flow.pulsesPerLitre;
+            _pulseAcc                     = 0;
             _prevFlowSample               = {};
             _lastNonZeroFlowSample        = {};
             _dsWindowStart                = 0;
             _dsFlowAcc                    = 0;
             _dsTempAcc                    = 0;
-            _dsPressAcc                   = 0;
+            _dsPulseAcc                   = 0;
             _dsCount                      = 0;
             _dsOutIdx                     = 0;
 
@@ -279,36 +270,19 @@ namespace AsnPlus
             // Flush remaining downsample window
             _flushDownsampleWindow();
 
-            uint64_t endSamplePulses = ( _lastNonZeroFlowSample.timestamp != 0 ) ? _lastNonZeroFlowSample.volume
-                                                                                  : _runtime.flow.volume;
-            uint16_t pulsesPerLitre =
-                ( _lastNonZeroFlowSample.pulsesPerLitre > 0 ) ? _lastNonZeroFlowSample.pulsesPerLitre
-                                                               : _volumeSamplePulsesPerLitre;
-
-            uint64_t pulseDelta = 0;
-            if ( endSamplePulses >= _volumeStartSamplePulses )
+            uint64_t pulseDelta = _pulseAcc;
+            if ( pulseDelta > 0 )
             {
-                pulseDelta = endSamplePulses - _volumeStartSamplePulses;
-            }
-            else
-            {
-                Log::warn(
-                    "Pulse counter moved backwards: start=%llu, end=%llu",
-                    _volumeStartSamplePulses,
-                    endSamplePulses
-                );
+                _volumeFromSampleAccMl = _divideRoundNearest( pulseDelta * ML_PER_LITRE, _flowPulsesPerLitre );
             }
 
-            if ( pulsesPerLitre > 0 && pulseDelta > 0 )
-            {
-                _volumeFromSampleAccMl = ( pulseDelta * ML_PER_LITRE ) / pulsesPerLitre;
-            }
-
-            uint32_t volumeFromFlowMl = static_cast< uint32_t >( _volumeAcc / MS_PER_MINUTE );
+            uint32_t volumeFromFlowMl = _divideRoundNearest( _volumeAcc, MS_PER_MINUTE );
             uint32_t volumeFromSampleMl = static_cast< uint32_t >( _volumeFromSampleAccMl );
 
             _currentEvent->endTimestamp = effectiveEndTimestamp;
-            _currentEvent->volume       = volumeFromFlowMl;
+            _currentEvent->volume       = volumeFromSampleMl;
+          //  _currentEvent->volume       = volumeFromFlowMl;
+            _currentEvent->pulseCount   = pulseDelta;
 
             if ( _onEventEnd.is_valid() )
             {
@@ -340,10 +314,19 @@ namespace AsnPlus
         using Log                                      = Logger< ProjectConfig::LOG_LEVEL_MEASUREMENT, TAG >;
 
         static constexpr uint32_t MS_PER_MINUTE        = 60'000;
-        static constexpr uint32_t DOWNSAMPLE_WINDOW_MS = 100;
+        static constexpr uint32_t DOWNSAMPLE_WINDOW_MS = 200;
         static constexpr uint32_t ML_PER_LITRE         = 1000;
+        static constexpr uint16_t DEFAULT_FLOW_PULSES_PER_LITRE = 236;
+
+        static uint32_t _divideRoundNearest( uint64_t numerator, uint32_t denominator )
+        {
+            if ( denominator == 0 ) return 0;
+            return static_cast< uint32_t >( ( numerator + ( denominator / 2 ) ) / denominator );
+        }
 
         uint32_t & _tapTimeoutMs;
+        uint16_t   _flowPulsesPerLitre;
+        bool       _usedDefaultFlowPulsesPerLitre = false;
         Runtime &  _runtime;
 
         bool     _eventActive     = false;
@@ -363,8 +346,7 @@ namespace AsnPlus
         // MARK: IncrementalVolume
         uint64_t                 _volumeAcc             = 0;
         uint64_t                 _volumeFromSampleAccMl = 0;
-        uint64_t                 _volumeStartSamplePulses = 0;
-        uint16_t                 _volumeSamplePulsesPerLitre = 0;
+        uint64_t                 _pulseAcc              = 0;
         DataSource::Base::Sample _prevFlowSample        = {};
         DataSource::Base::Sample _lastNonZeroFlowSample = {};
         uint64_t                 _lastProcessedFlowTimestamp = 0;
@@ -374,9 +356,27 @@ namespace AsnPlus
         uint64_t _dsWindowStart                  = 0;
         uint64_t _dsFlowAcc                      = 0;
         uint64_t _dsTempAcc                      = 0;
-        uint64_t _dsPressAcc                     = 0;
+        uint64_t _dsPulseAcc                     = 0;
         uint32_t _dsCount                        = 0;
         uint16_t _dsOutIdx                       = 0;
+
+        uint32_t _currentVolumeFromFlowMl() const
+        {
+            uint64_t volumeAccNow = _volumeAcc;
+            if ( _prevFlowSample.timestamp != 0 && _runtime.flow.timestamp >= _prevFlowSample.timestamp )
+            {
+                uint64_t dt = _runtime.flow.timestamp - _prevFlowSample.timestamp;
+                volumeAccNow += static_cast< uint64_t >( _prevFlowSample.value ) * dt;
+            }
+
+            return _divideRoundNearest( volumeAccNow, MS_PER_MINUTE );
+        }
+
+        uint32_t _currentVolumeFromPulseMl() const
+        {
+            if ( _pulseAcc == 0 ) return 0;
+            return _divideRoundNearest( _pulseAcc * ML_PER_LITRE, _flowPulsesPerLitre );
+        }
 
         void _addSample(
             const DataSource::Base::Sample & flow,
@@ -384,12 +384,17 @@ namespace AsnPlus
             const DataSource::Base::Sample & press
         )
         {
+            (void) press;
+
             // Incremental volume: accumulate (prevValue * dt) for each new sample
             if ( _prevFlowSample.timestamp != 0 )
             {
                 uint64_t dt = flow.timestamp - _prevFlowSample.timestamp;
                 _volumeAcc += static_cast< uint64_t >( _prevFlowSample.value ) * dt;
+
             }
+
+            _pulseAcc += flow.pulse;
 
             _prevFlowSample = flow;
 
@@ -401,7 +406,7 @@ namespace AsnPlus
 
             _dsFlowAcc  += flow.value;
             _dsTempAcc  += temp.value;
-            _dsPressAcc += press.value;
+            _dsPulseAcc += flow.pulse;
             ++_dsCount;
 
             if ( flow.timestamp - _dsWindowStart >= DOWNSAMPLE_WINDOW_MS )
@@ -417,14 +422,18 @@ namespace AsnPlus
 
             // TODO(DK): Add average temperature and conductivity to event
 
-            _currentEvent->flowProfile[ _dsOutIdx ]     = static_cast< uint32_t >( _dsFlowAcc / _dsCount );
-            _currentEvent->volumeProfile[ _dsOutIdx ]   = getCurrentPouredMl();
-            _currentEvent->pressureProfile[ _dsOutIdx ] = static_cast< uint32_t >( _dsPressAcc / _dsCount );
+            const uint32_t volumeFromFlowMl  = _currentVolumeFromFlowMl();
+            const uint32_t volumeFromPulseMl = _currentVolumeFromPulseMl();
+
+            _currentEvent->flowProfile[ _dsOutIdx ]        = _divideRoundNearest( _dsFlowAcc, _dsCount );
+            _currentEvent->volumeFlowProfile[ _dsOutIdx ]  = volumeFromFlowMl;
+            _currentEvent->volumePulseProfile[ _dsOutIdx ] = volumeFromPulseMl;
+            _currentEvent->pulseProfile[ _dsOutIdx ]       = static_cast< uint32_t >( _pulseAcc );
             ++_dsOutIdx;
 
             _dsFlowAcc  = 0;
             _dsTempAcc  = 0;
-            _dsPressAcc = 0;
+            _dsPulseAcc = 0;
             _dsCount    = 0;
         }
     };

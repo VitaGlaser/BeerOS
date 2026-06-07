@@ -97,7 +97,7 @@ namespace AsnPlus::DataSource
                 _debugInfo.data[ 0 ] = static_cast< uint8_t >( ( count >> 8 ) & 0xFF );
                 _debugInfo.data[ 1 ] = static_cast< uint8_t >( count & 0xFF );
 
-                _writeSample( timestamp, 0, _pulseAcc, _pulsesPerLitre );
+                _writeSample( timestamp, 0, 0 );
                 return;
             }
 
@@ -142,7 +142,7 @@ namespace AsnPlus::DataSource
                 _debugInfo.data[ 0 ] = static_cast< uint8_t >( ( count >> 8 ) & 0xFF );
                 _debugInfo.data[ 1 ] = static_cast< uint8_t >( count & 0xFF );
 
-                _writeSample( timestamp, 0, _pulseAcc, _pulsesPerLitre );
+                _writeSample( timestamp, 0, 0 );
                 return;
             }
 
@@ -162,10 +162,9 @@ namespace AsnPlus::DataSource
             _debugInfo.data[ 0 ] = static_cast< uint8_t >( ( count >> 8 ) & 0xFF );
             _debugInfo.data[ 1 ] = static_cast< uint8_t >( count & 0xFF );
 
-            _pulseAcc += deltaPulses;
-            _writeSample( timestamp, value, _pulseAcc, _pulsesPerLitre );
+            _writeSample( timestamp, value, deltaPulses );
 
-            Log::debug( "Polled pulse flow sensor: flow=%u ml/min, pulses=%llu (%llu ms)", value, _pulseAcc, timestamp );
+            Log::debug( "Polled pulse flow sensor: flow=%u ml/min, pulsesDelta=%u (%llu ms)", value, deltaPulses, timestamp );
         }
 
         void bindTimerChannel( Expander::Timers::Timer::Channel & channel )
@@ -199,7 +198,6 @@ namespace AsnPlus::DataSource
 
         uint16_t _lastCount           = 0;
         uint64_t _lastTimestamp       = 0;
-        uint64_t _pulseAcc            = 0;
         bool     _baselinePending     = true;
         uint32_t _consecutiveGlitches = 0;
         uint32_t _consecutiveSpiGlitches = 0;
