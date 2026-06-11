@@ -472,7 +472,7 @@ namespace AsnPlus
             timer1.setAutoReload( 0xFFFF );
             timer1.setAutoReloadPreload( true );
 
-            timer1Channel1.setPolarity( Expander::TIMxCCMR::Polarity::ACTIVE_HIGH );
+            timer1Channel1.setPolarity( Expander::TIMxCCMR::Polarity::BOTH_EDGES );
             timer1Channel1.setICPrescaler( Expander::TIMxCCMR::ICPrescaler::EVERY_EDGE );
             timer1Channel1.setICFilter( FILTER );
             timer1Channel1.enable();
@@ -484,7 +484,7 @@ namespace AsnPlus
             timer2.setAutoReload( 0xFFFF );
             timer2.setAutoReloadPreload( true );
 
-            timer2Channel1.setPolarity( Expander::TIMxCCMR::Polarity::ACTIVE_HIGH );
+            timer2Channel1.setPolarity( Expander::TIMxCCMR::Polarity::BOTH_EDGES );
             timer2Channel1.setICPrescaler( Expander::TIMxCCMR::ICPrescaler::EVERY_EDGE );
             timer2Channel1.setICFilter( FILTER );
             timer2Channel1.enable();
@@ -496,7 +496,7 @@ namespace AsnPlus
             timer3.setAutoReload( 0xFFFF );
             timer3.setAutoReloadPreload( true );
 
-            timer3Channel1.setPolarity( Expander::TIMxCCMR::Polarity::ACTIVE_HIGH );
+            timer3Channel1.setPolarity( Expander::TIMxCCMR::Polarity::BOTH_EDGES );
             timer3Channel1.setICPrescaler( Expander::TIMxCCMR::ICPrescaler::EVERY_EDGE );
             timer3Channel1.setICFilter( FILTER );
             timer3Channel1.enable();
@@ -508,7 +508,7 @@ namespace AsnPlus
             timer4.setAutoReload( 0xFFFF );
             timer4.setAutoReloadPreload( true );
 
-            timer4Channel1.setPolarity( Expander::TIMxCCMR::Polarity::ACTIVE_HIGH );
+            timer4Channel1.setPolarity( Expander::TIMxCCMR::Polarity::BOTH_EDGES );
             timer4Channel1.setICPrescaler( Expander::TIMxCCMR::ICPrescaler::EVERY_EDGE );
             timer4Channel1.setICFilter( FILTER );
             timer4Channel1.enable();

@@ -10,6 +10,8 @@
 #include "asn/asn-expander-lib/include/adc/adc.hpp"
 #include "asn/asn-expander-lib/include/timer/timer.hpp"
 
+#include "esp_rom_sys.h"
+
 #include "flow_modbus.hpp"
 #include "flow_pulse.hpp"
 #include "temperature_modbus.hpp"
@@ -24,7 +26,7 @@ namespace AsnPlus::DataSource
     {
     public:
         static constexpr uint8_t  NUM_CHANNELS             = 4;
-        static constexpr uint16_t DEFAULT_PULSES_PER_LITRE = 236;
+        static constexpr uint16_t DEFAULT_PULSES_PER_LITRE = 472;
 
         using PulseChannels = Array< Expander::Timers::Timer::Channel, NUM_CHANNELS >;
         using AdcChannels   = Array< Expander::Adc::Adc::Channel, NUM_CHANNELS >;
@@ -73,6 +75,11 @@ namespace AsnPlus::DataSource
             for ( uint8_t i = 0; i < NUM_CHANNELS; ++i )
             {
                 if ( _flowPulseArray[ i ].isEnabled() ) _flowPulseArray[ i ].poll();
+
+                if ( PULSE_CHANNEL_POLL_GAP_US > 0 && i + 1 < NUM_CHANNELS )
+                {
+                    esp_rom_delay_us( PULSE_CHANNEL_POLL_GAP_US );
+                }
             }
         }
 
@@ -257,6 +264,8 @@ namespace AsnPlus::DataSource
     private:
         static constexpr const char TAG[] = "DataSourcesManager";
         using Log                         = Logger< ProjectConfig::LOG_LEVEL_DATA_SOURCES, TAG >;
+
+        static constexpr uint16_t PULSE_CHANNEL_POLL_GAP_US = 100;
 
         Modbus::RtuMaster & _modbusMaster;
         PulseChannels       _timerChannels;

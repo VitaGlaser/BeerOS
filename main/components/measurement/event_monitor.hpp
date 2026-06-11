@@ -316,7 +316,7 @@ namespace AsnPlus
         static constexpr uint32_t MS_PER_MINUTE        = 60'000;
         static constexpr uint32_t DOWNSAMPLE_WINDOW_MS = 200;
         static constexpr uint32_t ML_PER_LITRE         = 1000;
-        static constexpr uint16_t DEFAULT_FLOW_PULSES_PER_LITRE = 236;
+        static constexpr uint16_t DEFAULT_FLOW_PULSES_PER_LITRE = 472;
 
         static uint32_t _divideRoundNearest( uint64_t numerator, uint32_t denominator )
         {

@@ -8,6 +8,8 @@
 
 #include "asn/asn-expander-lib/include/timer/timer.hpp"
 
+#include "esp_rom_sys.h"
+
 #include "base.hpp"
 
 namespace AsnPlus::DataSource
@@ -37,6 +39,11 @@ namespace AsnPlus::DataSource
             {
                 for ( uint8_t attempt = 0; attempt < SPI_GLITCH_RETRY_COUNT; ++attempt )
                 {
+                    if ( SPI_GLITCH_RETRY_DELAY_US > 0 )
+                    {
+                        esp_rom_delay_us( SPI_GLITCH_RETRY_DELAY_US );
+                    }
+
                     uint16_t retry = _channel->getValue();
                     if ( ( ( retry >> 8 ) != ( retry & 0xFF ) ) || retry == 0 )
                     {
@@ -190,7 +197,8 @@ namespace AsnPlus::DataSource
         static constexpr float ML_PER_LITRE            = 1000.0f;
         static constexpr uint32_t MAX_FLOW_ML_PER_MIN  = 12000;
         static constexpr uint8_t RATE_GUARD_MULTIPLIER = 4;
-        static constexpr uint8_t SPI_GLITCH_RETRY_COUNT = 6;
+        static constexpr uint8_t SPI_GLITCH_RETRY_COUNT = 3;
+        static constexpr uint16_t SPI_GLITCH_RETRY_DELAY_US = 100;
         static constexpr uint16_t SPI_GLITCH_WARN_EVERY_N = 32;
 
         Expander::Timers::Timer::Channel * _channel = nullptr;
