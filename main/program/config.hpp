@@ -20,5 +20,6 @@ namespace AsnPlus
         static constexpr uint8_t LOG_LEVEL_SENSOR               = 2;
         static constexpr uint8_t LOG_LEVEL_DATA_SOURCES         = 2;
         static constexpr uint8_t LOG_LEVEL_MQTT                 = 2;
+        static constexpr uint8_t LOG_LEVEL_WEBSOCKET            = 2;
     };
 }    // namespace AsnPlus

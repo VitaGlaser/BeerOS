@@ -35,6 +35,7 @@
 
 #include "components/connection/manager.hpp"
 #include "components/mqtt/manager.hpp"
+#include "components/websocket/manager.hpp"
 
 #include "components/cloud/request_manager.hpp"
 #include "components/leds/ws2812_led_strip.hpp"
@@ -127,6 +128,7 @@ namespace AsnPlus
         };
 
         Mqtt::Manager mqttManager { mqttClient, database };
+        Websocket::Manager websocketManager { database };
 
         Cloud::RequestManager requestManager { database };
 
@@ -144,7 +146,8 @@ namespace AsnPlus
             lte,
             lteClient,
             requestManager,
-            mqttManager
+            mqttManager,
+            websocketManager
         };
 
         // MARK: Peripheral Ports
@@ -313,7 +316,14 @@ namespace AsnPlus
             connectionManager.httpsPoll();
         }
 
-        void mqttPoll() { connectionManager.mqttPoll(); }
+        void streamPoll()
+        {
+            connectionManager.websocketPoll();
+
+            // MQTT is controlled by mqttConfig.enabled from settings/cloud config.
+            // Keeping this poll active allows runtime enable/disable without restart.
+            connectionManager.mqttPoll();
+        }
 
         void lteUartPoll() { lteAtUart.poll(); }
 
@@ -340,7 +350,7 @@ namespace AsnPlus
             while ( true )
             {
                 if ( xTaskGetTickCount() - _lastTime > COMPONENTS_TASK_DELAY_MS )
-                    ESP_LOGI( "componentsTask", "Last time: %lu", xTaskGetTickCount() - _lastTime );
+                    ESP_LOGD( "componentsTask", "Last time: %lu", xTaskGetTickCount() - _lastTime );
                 _lastTime = xTaskGetTickCount();
                 instance->componentsPoll();
                 vTaskDelayUntil( &_lastTaskTime, pdMS_TO_TICKS( COMPONENTS_TASK_DELAY_MS ) );
@@ -382,16 +392,6 @@ namespace AsnPlus
             }
         }
 
-        static void mqttTask( void * pvParameters )
-        {
-            Components * components = static_cast< Components * >( pvParameters );
-            while ( true )
-            {
-                components->mqttPoll();
-                vTaskDelay( pdMS_TO_TICKS( MQTT_TASK_DELAY_MS ) );
-            }
-        }
-
         static void lteUartTask( void * pvParameters )
         {
             Components * components = static_cast< Components * >( pvParameters );
@@ -399,6 +399,16 @@ namespace AsnPlus
             {
                 components->lteUartPoll();
                 vTaskDelay( pdMS_TO_TICKS( LTE_TASK_DELAY_MS ) );
+            }
+        }
+
+        static void streamTask( void * pvParameters )
+        {
+            Components * components = static_cast< Components * >( pvParameters );
+            while ( true )
+            {
+                components->streamPoll();
+                vTaskDelay( pdMS_TO_TICKS( STREAM_TASK_DELAY_MS ) );
             }
         }
 
@@ -411,7 +421,7 @@ namespace AsnPlus
         static constexpr uint32_t CONTROL_TASK_PRIORITY       = 5;
         static constexpr uint32_t DATA_SOURCE_TASK_PRIORITY   = 4;
         static constexpr uint32_t LTE_TASK_PRIORITY           = 3;
-        static constexpr uint32_t MQTT_TASK_PRIORITY          = 3;
+        static constexpr uint32_t STREAM_TASK_PRIORITY        = 3;
         static constexpr uint32_t SYSTEM_TASK_PRIORITY        = 2;
 
         static constexpr uint32_t COMMUNICATION_TASK_DELAY_MS = 100;
@@ -419,7 +429,7 @@ namespace AsnPlus
         static constexpr uint32_t CONTROL_TASK_DELAY_MS       = 10;
         static constexpr uint32_t DATA_SOURCE_TASK_DELAY_MS   = 25;
         static constexpr uint32_t LTE_TASK_DELAY_MS           = 100;
-        static constexpr uint32_t MQTT_TASK_DELAY_MS          = 100;
+        static constexpr uint32_t STREAM_TASK_DELAY_MS        = 200;
         static constexpr uint32_t SYSTEM_TASK_DELAY_MS        = 1000;
 
         void _initializeExpander()
@@ -563,11 +573,12 @@ namespace AsnPlus
                 Log::error( "Failed to create communication task" );
             }
 
-            if ( xTaskCreatePinnedToCore( mqttTask, "mqttTask", 6 * 1024, this, MQTT_TASK_PRIORITY, NULL, 0 ) !=
+            if ( xTaskCreatePinnedToCore( streamTask, "streamTask", 8 * 1024, this, STREAM_TASK_PRIORITY, NULL, 0 ) !=
                  pdPASS )
             {
-                Log::error( "Failed to create mqtt task" );
+                Log::error( "Failed to create stream task" );
             }
+
         }
     };
 }    // namespace AsnPlus

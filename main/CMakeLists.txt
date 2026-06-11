@@ -40,6 +40,7 @@ endif()
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-esp32-wifi)
     add_subdirectory(asn/asn-esp32-wifi)
     target_link_libraries(${COMPONENT_LIB} PRIVATE AsnPlus::Esp32Wifi)
+    target_link_libraries(${COMPONENT_LIB} PRIVATE idf::esp_http_server)
 endif()
 
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/asn/asn-esp32-modbus)

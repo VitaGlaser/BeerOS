@@ -20,6 +20,7 @@
 
 #include "components/cloud/request_manager.hpp"
 #include "components/mqtt/manager.hpp"
+#include "components/websocket/manager.hpp"
 
 #include "asn/asn-esp32-wifi/include/sntp/sntp.hpp"
 
@@ -46,7 +47,8 @@ namespace AsnPlus::Connection
             Eg915 &                  lte,
             Eg915HttpsClient &       lteClient,
             Cloud::RequestManager &  requestManager,
-            Mqtt::Manager &          mqttManager
+            Mqtt::Manager &          mqttManager,
+            Websocket::Manager &     websocketManager
         ) :
             _connectionModuleConfig( connectionModuleConfig ),
             _connectionModuleRuntime( connectionModuleRuntime ),
@@ -61,7 +63,8 @@ namespace AsnPlus::Connection
             _lte( lte ),
             _lteClient( lteClient ),
             _requestManager( requestManager ),
-            _mqttManager( mqttManager )
+            _mqttManager( mqttManager ),
+            _websocketManager( websocketManager )
         {
         }
 
@@ -117,6 +120,8 @@ namespace AsnPlus::Connection
 
             const bool network = isNetworkAvailable();
 
+            _websocketManager.setNetworkConnected( network );
+
             if ( network && ! _networkWasAvailable ) _sntpManager.notifyNetworkAvailable();
             _networkWasAvailable = network;
         }
@@ -132,6 +137,12 @@ namespace AsnPlus::Connection
         {
             if ( ! isNetworkAvailable() ) return;
             _mqttManager.poll();
+        }
+
+        void websocketPoll()
+        {
+            if ( ! isNetworkAvailable() ) return;
+            _websocketManager.poll();
         }
 
         bool isNetworkAvailable()
@@ -176,6 +187,7 @@ namespace AsnPlus::Connection
 
         Cloud::RequestManager & _requestManager;
         Mqtt::Manager &         _mqttManager;
+        Websocket::Manager &    _websocketManager;
 
         Wifi::Sntp _sntpManager { "pool.ntp.org" };
         bool       _networkWasAvailable = false;

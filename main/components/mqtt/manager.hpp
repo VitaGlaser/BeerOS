@@ -94,6 +94,9 @@ namespace AsnPlus::Mqtt
 
         void _maintainConnection()
         {
+            const IClient::Config & cfg = _database.mqttConfig;
+            if ( !cfg.enabled || cfg.brokerUri[ 0 ] == '\0' ) return;
+
             const auto state = _mqttClient.getState();
             if ( state == IClient::State::CONNECTED || state == IClient::State::CONNECTING ) return;
 

@@ -63,7 +63,7 @@ namespace AsnPlus
 
         FirmwareInfo    versionInfo {};
         ManufactureInfo manufactureInfo {
-            .uid         = { 'R', 'V', 'S', 'S', 'B', 'H', 'M', 'B', 'R', 'A', '0', '0', '0', '0', '0', '0' },
+            .uid         = { 'R', 'V', 'S', 'S', 'B', 'H', 'M', 'B', 'R', 'A', '0', '0', '0', '0', '0', '3' },
             .environment = ManufactureInfo::Environment::DEVELOP
         };
         OwnerInfo ownerInfo {};
@@ -82,7 +82,7 @@ namespace AsnPlus
         TimeRuntime       timeRuntime {};
         TimeChangeRequest timeChangeRequest {};
 
-        Esp32::Mqtt::Client::Config mqttConfig {};
+        Esp32::Mqtt::Client::Config mqttConfig { .enabled = false };
 
         Cloud::DeviceConfig  deviceConfig {};
         Cloud::NetworkConfig networkConfig {};
