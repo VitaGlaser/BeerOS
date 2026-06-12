@@ -8,6 +8,7 @@ idf_component_register(
         esp_https_ota
         esp_http_client
         app_update
+        json
 )
 
 message(STATUS "Generating build_info.h")

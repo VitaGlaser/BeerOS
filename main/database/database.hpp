@@ -63,7 +63,7 @@ namespace AsnPlus
 
         FirmwareInfo    versionInfo {};
         ManufactureInfo manufactureInfo {
-            .uid         = { 'R', 'V', 'S', 'S', 'B', 'H', 'M', 'B', 'R', 'A', '0', '0', '0', '0', '0', '3' },
+            .uid         = { 'R', 'V', 'S', 'S', 'B', 'H', 'M', 'B', 'R', 'A', '0', '0', '0', '0', '0', '0' },
             .environment = ManufactureInfo::Environment::DEVELOP
         };
         OwnerInfo ownerInfo {};
