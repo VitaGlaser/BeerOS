@@ -4,6 +4,10 @@ idf_component_register(
     INCLUDE_DIRS
         "."
         "${CMAKE_CURRENT_BINARY_DIR}"
+    REQUIRES
+        esp_https_ota
+        esp_http_client
+        app_update
 )
 
 message(STATUS "Generating build_info.h")

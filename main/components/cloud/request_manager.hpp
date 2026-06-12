@@ -1,5 +1,9 @@
 #pragma once
 
+#include <cstring>
+
+#include "freertos/FreeRTOS.h"
+
 #include "asn/asn-core/logger.hpp"
 #include "asn/asn-core/timer.hpp"
 #include "asn/asn-core/vector.hpp"
@@ -18,6 +22,7 @@
 #include "requests/object_post_request.hpp"
 #include "requests/state_post_request.hpp"
 #include "requests/time_config_request.hpp"
+#include "requests/unit_status_request.hpp"
 
 #include "asn/asn-hal/include/common/common_structs.hpp"
 
@@ -29,6 +34,13 @@ namespace AsnPlus::Cloud
     class RequestManager
     {
     public:
+        struct OtaJob
+        {
+            bool mandatory = false;
+            char version[ 32 ] {};
+            char url[ 192 ] {};
+        };
+
         RequestManager( Database & database ) : _database( database ) {}
 
         bool initialize()
@@ -119,6 +131,12 @@ namespace AsnPlus::Cloud
                 return false;
             }
 
+            if ( ! _unitStatusRequest.initialize() )
+            {
+                Log::error( "Failed to initialize unitStatusRequest" );
+                return false;
+            }
+
             for ( uint8_t i = 0; i < 4; ++i )
             {
                 if ( ! _channelConfigPostRequestPtrs[ i ]->initialize() )
@@ -152,6 +170,25 @@ namespace AsnPlus::Cloud
             {
                 Log::error( "State POST failed — skipping config/event requests" );
                 return;
+            }
+
+            if ( ! _unitStatusRequest.send() )
+            {
+                Log::warn( "Unit status POST failed" );
+            }
+            else if ( _unitStatusRequest.isOtaAvailable() )
+            {
+                _queueOtaJob(
+                    _unitStatusRequest.getOtaVersion(),
+                    _unitStatusRequest.getOtaUrl(),
+                    _unitStatusRequest.isOtaMandatory()
+                );
+                Log::warn(
+                    "OTA update available: version=%s mandatory=%s url=%s",
+                    _unitStatusRequest.getOtaVersion(),
+                    _unitStatusRequest.isOtaMandatory() ? "true" : "false",
+                    _unitStatusRequest.getOtaUrl()
+                );
             }
 
             if ( _onStartup )
@@ -227,6 +264,32 @@ namespace AsnPlus::Cloud
 
         void setStateResponse( const StateResponse & response ) { _stateResponse = response; }
 
+        bool tryDequeueOtaJob( OtaJob & job )
+        {
+            portENTER_CRITICAL( &_otaJobMux );
+            if ( ! _otaJobPending )
+            {
+                portEXIT_CRITICAL( &_otaJobMux );
+                return false;
+            }
+            job            = _otaJob;
+            _otaJobPending = false;
+            portEXIT_CRITICAL( &_otaJobMux );
+            return true;
+        }
+
+        void setReportedOtaStatus( const char * status, const char * targetVersion = nullptr )
+        {
+            _unitStatusRequest.setReportedOtaStatus( status, targetVersion );
+        }
+
+        bool sendUnitStatusNow()
+        {
+            if ( ! _client ) return false;
+            _buildStateRequest();
+            return _unitStatusRequest.send();
+        }
+
         void setStateTimerInterval( uint32_t interval_ms )
         {
             Log::info( "State timer interval set to %u ms", interval_ms );
@@ -260,6 +323,7 @@ namespace AsnPlus::Cloud
             _networkConfigPostRequest.setClient( client );
             _mqttConfigGetRequest.setClient( client );
             _mqttConfigPostRequest.setClient( client );
+            _unitStatusRequest.setClient( client );
 
             for ( uint8_t i = 0; i < 4; ++i )
             {
@@ -536,6 +600,16 @@ namespace AsnPlus::Cloud
             _responseBuffer
         };
 
+        IFirestoreRequest::Config
+            _unitStatusRequestConfig { UNIT_STATUS_URL, _database.manufactureInfo.uid, "", 0 };
+
+        UnitStatusRequest
+            _unitStatusRequest { _stateRequestData, _unitStatusRequestConfig, _buffer, _responseBuffer };
+
+        OtaJob _otaJob {};
+        bool   _otaJobPending = false;
+        portMUX_TYPE _otaJobMux = portMUX_INITIALIZER_UNLOCKED;
+
         Array< IFirestoreRequest::Config, 4 > _channelConfigPostConfigs {
             {
              { nullptr, _database.manufactureInfo.uid, MOCK_CHANNEL_CONFIG_URL, 0 },
@@ -641,6 +715,25 @@ namespace AsnPlus::Cloud
                 ch.temperature = static_cast< uint64_t >( runtime.temperature );
                 ch.pressure    = static_cast< uint64_t >( runtime.pressure );
             }
+        }
+
+        void _queueOtaJob( const char * version, const char * url, bool mandatory )
+        {
+            if ( ! url || url[ 0 ] == '\0' ) return;
+
+            portENTER_CRITICAL( &_otaJobMux );
+
+            _otaJob.mandatory = mandatory;
+
+            if ( version && version[ 0 ] != '\0' )
+                StringExt( _otaJob.version, _otaJob.version, sizeof( _otaJob.version ) ).assign( version );
+            else
+                _otaJob.version[ 0 ] = '\0';
+
+            StringExt( _otaJob.url, _otaJob.url, sizeof( _otaJob.url ) ).assign( url );
+            _otaJobPending = true;
+
+            portEXIT_CRITICAL( &_otaJobMux );
         }
 
         static const char * getBaseUrl( ManufactureInfo::Environment env )

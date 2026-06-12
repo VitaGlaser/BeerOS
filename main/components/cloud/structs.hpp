@@ -16,5 +16,6 @@ namespace AsnPlus::Cloud
     static constexpr const char MOCK_STATE_URL[]             = "state";
     static constexpr const char MOCK_CHANNEL_HISTORY_URL[]   = "channelHistory";
     static constexpr const char PROFILE_WEBHOOK_URL[]        = "https://automation.teximp.cz/beeros";
+    static constexpr const char UNIT_STATUS_URL[]            = "https://beeros.revosoft.cz/units.html";
 
 }    // namespace AsnPlus::Cloud

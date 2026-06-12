@@ -4,6 +4,10 @@
 
 #include "freertos/FreeRTOS.h"
 
+#include "esp_crt_bundle.h"
+#include "esp_https_ota.h"
+#include "esp_system.h"
+
 #include "asn/asn-core/logger.hpp"
 #include "asn/asn-core/timer.hpp"
 #include "asn/asn-core/types.hpp"
@@ -325,6 +329,40 @@ namespace AsnPlus
             connectionManager.mqttPoll();
         }
 
+        void otaPoll()
+        {
+            if ( _otaInProgress ) return;
+
+            Cloud::RequestManager::OtaJob job {};
+            if ( ! requestManager.tryDequeueOtaJob( job ) ) return;
+
+            _otaInProgress = true;
+
+            requestManager.setReportedOtaStatus( "updating", job.version );
+            requestManager.sendUnitStatusNow();
+            Log::warn(
+                "Starting OTA from status endpoint: version=%s mandatory=%s url=%s",
+                job.version,
+                job.mandatory ? "true" : "false",
+                job.url
+            );
+
+            bool success = _performOtaUpdate( job );
+            if ( success )
+            {
+                requestManager.setReportedOtaStatus( "rebooting", job.version );
+                requestManager.sendUnitStatusNow();
+                Utils::delay( 1500 );
+                esp_restart();
+            }
+            else
+            {
+                requestManager.setReportedOtaStatus( "failed", job.version );
+                requestManager.sendUnitStatusNow();
+                _otaInProgress = false;
+            }
+        }
+
         void lteUartPoll() { lteAtUart.poll(); }
 
         static void systemTask( void * pvParameters )
@@ -412,6 +450,16 @@ namespace AsnPlus
             }
         }
 
+        static void otaTask( void * pvParameters )
+        {
+            Components * components = static_cast< Components * >( pvParameters );
+            while ( true )
+            {
+                components->otaPoll();
+                vTaskDelay( pdMS_TO_TICKS( OTA_TASK_DELAY_MS ) );
+            }
+        }
+
     private:
         static constexpr const char TAG[]                     = "Components";
         using Log                                             = AsnPlus::Logger< ProjectConfig::LOG_LEVEL, TAG >;
@@ -421,7 +469,8 @@ namespace AsnPlus
         static constexpr uint32_t CONTROL_TASK_PRIORITY       = 5;
         static constexpr uint32_t DATA_SOURCE_TASK_PRIORITY   = 4;
         static constexpr uint32_t LTE_TASK_PRIORITY           = 3;
-        static constexpr uint32_t STREAM_TASK_PRIORITY        = 3;
+        static constexpr uint32_t OTA_TASK_PRIORITY           = 1;
+        static constexpr uint32_t STREAM_TASK_PRIORITY        = 4;
         static constexpr uint32_t SYSTEM_TASK_PRIORITY        = 2;
 
         static constexpr uint32_t COMMUNICATION_TASK_DELAY_MS = 100;
@@ -429,8 +478,43 @@ namespace AsnPlus
         static constexpr uint32_t CONTROL_TASK_DELAY_MS       = 10;
         static constexpr uint32_t DATA_SOURCE_TASK_DELAY_MS   = 25;
         static constexpr uint32_t LTE_TASK_DELAY_MS           = 100;
+        static constexpr uint32_t OTA_TASK_DELAY_MS           = 1000;
         static constexpr uint32_t STREAM_TASK_DELAY_MS        = 200;
         static constexpr uint32_t SYSTEM_TASK_DELAY_MS        = 1000;
+
+        bool _otaInProgress = false;
+
+        bool _performOtaUpdate( const Cloud::RequestManager::OtaJob & job )
+        {
+            char fullUrl[ 256 ] = {};
+            if ( job.url[ 0 ] == '/' )
+            {
+                snprintf( fullUrl, sizeof( fullUrl ), "https://beeros.revosoft.cz%s", job.url );
+            }
+            else
+            {
+                snprintf( fullUrl, sizeof( fullUrl ), "%s", job.url );
+            }
+
+            esp_http_client_config_t httpConfig {};
+            httpConfig.url               = fullUrl;
+            httpConfig.timeout_ms        = 15000;
+            httpConfig.keep_alive_enable = true;
+            httpConfig.crt_bundle_attach = esp_crt_bundle_attach;
+
+            esp_https_ota_config_t otaConfig {};
+            otaConfig.http_config = &httpConfig;
+
+            esp_err_t result      = esp_https_ota( &otaConfig );
+            if ( result != ESP_OK )
+            {
+                Log::error( "OTA failed for url=%s (%s)", fullUrl, esp_err_to_name( result ) );
+                return false;
+            }
+
+            Log::warn( "OTA image applied successfully, rebooting" );
+            return true;
+        }
 
         void _initializeExpander()
         {
@@ -577,6 +661,12 @@ namespace AsnPlus
                  pdPASS )
             {
                 Log::error( "Failed to create stream task" );
+            }
+
+            if ( xTaskCreatePinnedToCore( otaTask, "otaTask", 10 * 1024, this, OTA_TASK_PRIORITY, NULL, 0 ) !=
+                 pdPASS )
+            {
+                Log::error( "Failed to create ota task" );
             }
 
         }
