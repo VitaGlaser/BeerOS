@@ -315,6 +315,11 @@ namespace AsnPlus
 
         void communicationPoll()
         {
+            if ( _otaInProgress || requestManager.hasPendingOtaJob() )
+            {
+                return;
+            }
+
             database.poll();
             connectionManager.poll();
             connectionManager.httpsPoll();
@@ -322,6 +327,11 @@ namespace AsnPlus
 
         void streamPoll()
         {
+            if ( _otaInProgress || requestManager.hasPendingOtaJob() )
+            {
+                return;
+            }
+
             connectionManager.websocketPoll();
 
             // MQTT is controlled by mqttConfig.enabled from settings/cloud config.
@@ -333,13 +343,18 @@ namespace AsnPlus
         {
             if ( _otaInProgress ) return;
 
+            const uint64_t nowMs = Utils::getMs64();
+            if ( nowMs < _otaRetryNotBeforeMs ) return;
+
             Cloud::RequestManager::OtaJob job {};
             if ( ! requestManager.tryDequeueOtaJob( job ) ) return;
 
             _otaInProgress = true;
 
             requestManager.setReportedOtaStatus( "updating", job.version );
-            requestManager.sendUnitStatusNow();
+            _trySendUnitStatusNow( "updating" );
+
+            _prepareHttpsForOta();
             Log::warn(
                 "Starting OTA from status endpoint: version=%s mandatory=%s url=%s",
                 job.version,
@@ -350,15 +365,19 @@ namespace AsnPlus
             bool success = _performOtaUpdate( job );
             if ( success )
             {
+                _otaRetryNotBeforeMs = 0;
+                _restoreServicesAfterOta();
                 requestManager.setReportedOtaStatus( "rebooting", job.version );
-                requestManager.sendUnitStatusNow();
+                _trySendUnitStatusNow( "rebooting" );
                 Utils::delay( 1500 );
                 esp_restart();
             }
             else
             {
+                _otaRetryNotBeforeMs = nowMs + OTA_RETRY_BACKOFF_MS;
+                _restoreServicesAfterOta();
                 requestManager.setReportedOtaStatus( "failed", job.version );
-                requestManager.sendUnitStatusNow();
+                _trySendUnitStatusNow( "failed" );
                 _otaInProgress = false;
             }
         }
@@ -373,7 +392,7 @@ namespace AsnPlus
             while ( true )
             {
                 if ( xTaskGetTickCount() - _lastTime > SYSTEM_TASK_DELAY_MS )
-                    ESP_LOGI( "systemTask", "Last time: %lu", xTaskGetTickCount() - _lastTime );
+                    ESP_LOGD( "systemTask", "Last time: %lu", xTaskGetTickCount() - _lastTime );
                 _lastTime = xTaskGetTickCount();
                 instance->systemPoll();
                 vTaskDelayUntil( &_lastTaskTime, pdMS_TO_TICKS( SYSTEM_TASK_DELAY_MS ) );
@@ -413,7 +432,7 @@ namespace AsnPlus
             while ( true )
             {
                 if ( xTaskGetTickCount() - _lastTime > CONTROL_TASK_DELAY_MS )
-                    ESP_LOGI( "controlTask", "Last time: %lu", xTaskGetTickCount() - _lastTime );
+                    ESP_LOGD( "controlTask", "Last time: %lu", xTaskGetTickCount() - _lastTime );
                 _lastTime = xTaskGetTickCount();
                 instance->controlPoll();
                 vTaskDelayUntil( &_lastTaskTime, pdMS_TO_TICKS( CONTROL_TASK_DELAY_MS ) );
@@ -481,8 +500,55 @@ namespace AsnPlus
         static constexpr uint32_t OTA_TASK_DELAY_MS           = 1000;
         static constexpr uint32_t STREAM_TASK_DELAY_MS        = 200;
         static constexpr uint32_t SYSTEM_TASK_DELAY_MS        = 1000;
+        static constexpr uint64_t OTA_RETRY_BACKOFF_MS        = 30'000;
 
-        bool _otaInProgress = false;
+        bool     _otaInProgress       = false;
+        uint64_t _otaRetryNotBeforeMs = 0;
+
+        void _prepareHttpsForOta()
+        {
+            // Ensure OTA uses a fresh TLS context and sockets.
+            requestManager.setClient( nullptr );
+            mqttClient.deinit();
+            websocketManager.stop();
+            wifiClient.cleanup();
+            ethernetClient.cleanup();
+        }
+
+        void _restoreServicesAfterOta()
+        {
+            wifiClient.initialize();
+            ethernetClient.initialize();
+            _bindRequestManagerClientForStatus();
+            mqttManager.initialize();
+            websocketManager.setNetworkConnected( connectionManager.isNetworkAvailable() );
+        }
+
+        void _bindRequestManagerClientForStatus()
+        {
+            using ConnectionState = Connection::State;
+
+            const auto & connRuntime = database.connectionModuleRuntime;
+            if ( connRuntime.ethValue == ConnectionState::CONNECTED )
+            {
+                requestManager.setClient( &ethernetClient );
+                return;
+            }
+
+            if ( connRuntime.wifiValue == ConnectionState::CONNECTED )
+            {
+                requestManager.setClient( &wifiClient );
+                return;
+            }
+
+            requestManager.setClient( nullptr );
+        }
+
+        void _trySendUnitStatusNow( const char * phase )
+        {
+            if ( requestManager.sendUnitStatusNow() ) return;
+            Log::warn( "Failed to send OTA status update (%s)", phase );
+        }
 
         bool _performOtaUpdate( const Cloud::RequestManager::OtaJob & job )
         {
@@ -499,11 +565,15 @@ namespace AsnPlus
             esp_http_client_config_t httpConfig {};
             httpConfig.url               = fullUrl;
             httpConfig.timeout_ms        = 15000;
-            httpConfig.keep_alive_enable = true;
+            httpConfig.keep_alive_enable = false;
             httpConfig.crt_bundle_attach = esp_crt_bundle_attach;
+            httpConfig.buffer_size       = 4096;
+            httpConfig.buffer_size_tx    = 1024;
 
             esp_https_ota_config_t otaConfig {};
-            otaConfig.http_config = &httpConfig;
+            otaConfig.http_config           = &httpConfig;
+            otaConfig.partial_http_download = true;
+            otaConfig.max_http_request_size = 4096;
 
             esp_err_t result      = esp_https_ota( &otaConfig );
             if ( result != ESP_OK )

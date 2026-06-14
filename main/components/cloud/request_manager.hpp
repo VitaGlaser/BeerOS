@@ -160,36 +160,20 @@ namespace AsnPlus::Cloud
                 return;
             }
 
-            if ( _stateIntervalMs == 0 ) return;
+            if ( _pollTickIntervalMs == 0 ) return;
             if ( ! _timer.isElapsed() ) return;
-            _timer.start( _stateIntervalMs );
+            _timer.start( _pollTickIntervalMs );
 
-            _buildStateRequest();
+            if ( _sendStateOnNextTick )
+            {
+                _buildStateRequest();
 
-            if ( ! _statePostRequest.send() )    // response updates _stateResponse in-place
-            {
-                Log::error( "State POST failed — skipping config/event requests" );
-                return;
-            }
-
-            if ( ! _unitStatusRequest.send() )
-            {
-                Log::warn( "Unit status POST failed" );
-            }
-            else if ( _unitStatusRequest.isOtaAvailable() )
-            {
-                _queueOtaJob(
-                    _unitStatusRequest.getOtaVersion(),
-                    _unitStatusRequest.getOtaUrl(),
-                    _unitStatusRequest.isOtaMandatory()
-                );
-                Log::warn(
-                    "OTA update available: version=%s mandatory=%s url=%s",
-                    _unitStatusRequest.getOtaVersion(),
-                    _unitStatusRequest.isOtaMandatory() ? "true" : "false",
-                    _unitStatusRequest.getOtaUrl()
-                );
-            }
+                if ( ! _statePostRequest.send() )    // response updates _stateResponse in-place
+                {
+                    Log::error( "State POST failed — skipping config/event requests" );
+                    _sendStateOnNextTick = false;
+                    return;
+                }
 
             if ( _onStartup )
             {
@@ -255,11 +239,45 @@ namespace AsnPlus::Cloud
                     Log::debug( "Channel %u config is up to date", i + 1 );
             }
 
-            for ( uint8_t i = 0; i < 4; ++i )
-            {
-                _channelEventRequestPtrs[ i ]->send();
-                _channelProfileWebhookRequestPtrs[ i ]->send();
+                for ( uint8_t i = 0; i < 4; ++i )
+                {
+                    _channelEventRequestPtrs[ i ]->send();
+                    _channelProfileWebhookRequestPtrs[ i ]->send();
+                }
+
+                _sendStateOnNextTick = false;
+                return;
             }
+
+            _buildStateRequest();
+
+            if ( ! _unitStatusRequest.send() )
+            {
+                Log::warn( "Unit status POST failed" );
+                _sendStateOnNextTick = true;
+                return;
+            }
+            else if ( _unitStatusRequest.isOtaAvailable() )
+            {
+                _queueOtaJob(
+                    _unitStatusRequest.getOtaVersion(),
+                    _unitStatusRequest.getOtaUrl(),
+                    _unitStatusRequest.isOtaMandatory()
+                );
+                Log::warn(
+                    "OTA update available: version=%s mandatory=%s url=%s",
+                    _unitStatusRequest.getOtaVersion(),
+                    _unitStatusRequest.isOtaMandatory() ? "true" : "false",
+                    _unitStatusRequest.getOtaUrl()
+                );
+
+                // Do not continue with additional cloud requests in the same cycle.
+                // OTA task will pick the job and handle update flow.
+                _sendStateOnNextTick = true;
+                return;
+            }
+
+            _sendStateOnNextTick = true;
         }
 
         void setStateResponse( const StateResponse & response ) { _stateResponse = response; }
@@ -278,6 +296,14 @@ namespace AsnPlus::Cloud
             return true;
         }
 
+        bool hasPendingOtaJob()
+        {
+            portENTER_CRITICAL( &_otaJobMux );
+            const bool pending = _otaJobPending;
+            portEXIT_CRITICAL( &_otaJobMux );
+            return pending;
+        }
+
         void setReportedOtaStatus( const char * status, const char * targetVersion = nullptr )
         {
             _unitStatusRequest.setReportedOtaStatus( status, targetVersion );
@@ -294,7 +320,9 @@ namespace AsnPlus::Cloud
         {
             Log::info( "State timer interval set to %u ms", interval_ms );
             _stateIntervalMs = interval_ms;
-            _timer.start( _stateIntervalMs );
+            _pollTickIntervalMs = ( _stateIntervalMs > 1 ) ? ( _stateIntervalMs / 2 ) : _stateIntervalMs;
+            _sendStateOnNextTick = false;
+            _timer.start( _pollTickIntervalMs );
         }
 
         void setClient( Https::IClient * client )
@@ -349,6 +377,8 @@ namespace AsnPlus::Cloud
 
         Timer<>  _timer {};
         uint32_t _stateIntervalMs = 0;
+        uint32_t _pollTickIntervalMs = 0;
+        bool     _sendStateOnNextTick = true;
 
         StateResponse _stateResponse {};
         StateRequest  _stateRequestData {};
