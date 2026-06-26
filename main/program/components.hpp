@@ -89,7 +89,7 @@ namespace AsnPlus
         // MARK: Communication
         Bluetooth::Nimble nimble { database.advertisingData, database.bluetoothConfig, database.bluetoothState };
 
-        Wifi::WifiManager    wifiManager { database.wifiConfig };
+        Wifi::WifiManager    wifiManager { database.wifiConfig, database.activeWifiSlotIndex };
         Esp32::Https::Client wifiClient {};
 
         // LTE

@@ -7,7 +7,7 @@ namespace AsnPlus
     class AdvertisingData : public AsnPlus::Bluetooth::AdvData
     {
     public:
-        const char *        device_name           = "";
+        const char *        device_name           = "BeerOS";
         static constexpr u8 SERIAL_NUMBER_MAX_LEN = 16;
 
         struct ManufacturerSpecific

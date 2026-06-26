@@ -72,6 +72,7 @@ namespace AsnPlus
         Bluetooth::Config bluetoothConfig {};
         Bluetooth::State  bluetoothState {};
         Wifi::LegacyWifiConfig  wifiConfig {};
+        uint8_t                 activeWifiSlotIndex = 0;
 
         Network::W5500Sta::Runtime ethStaRuntime {};
 
@@ -131,6 +132,7 @@ namespace AsnPlus
         static constexpr const char DEVICE_CONFIG_NVS_KEY[]  = "device_cfg";
         static constexpr const char NETWORK_CONFIG_NVS_KEY[] = "network_cfg";
         static constexpr const char MQTT_CONFIG_NVS_KEY[]    = "mqtt_cfg";
+        static constexpr const char ACTIVE_WIFI_SLOT_NVS_KEY[] = "act_wifi_slot";
         static constexpr const char CH_CONFIG_NVS_KEY_FMT[]  = "ch_cfg_%u";
         static constexpr const char CH_SEQ_NVS_KEY_FMT[]     = "ch_seq_%u";
 
@@ -164,6 +166,24 @@ namespace AsnPlus
         void poll()
         {
             timeService.poll();
+
+            if ( activeWifiSlotIndex != _lastSavedActiveWifiSlotIndex )
+            {
+                Log::info(
+                    "Persisting active Wi-Fi slot change: %u -> %u",
+                    _lastSavedActiveWifiSlotIndex,
+                    activeWifiSlotIndex
+                );
+                saveActiveWifiSlotIndex();
+                _lastSavedActiveWifiSlotIndex = activeWifiSlotIndex;
+            }
+
+            const Wifi::StaStatus currentWifiStatus = wifiConfig.status.sta_status;
+            if ( currentWifiStatus == Wifi::StaStatus::CONNECTED && _lastWifiStatus != Wifi::StaStatus::CONNECTED )
+            {
+                _updateActiveSlotFromConnectedSsid();
+            }
+            _lastWifiStatus = currentWifiStatus;
             
             uptime    = static_cast< uint32_t >( Utils::getMs64() / 1000ULL );
 
@@ -172,6 +192,12 @@ namespace AsnPlus
             if ( networkConfig.wifiConfig.ssid[ 0 ] != '\0' &&
                  strcmp( wifiConfig.saved_networks[ 0 ].ssid.data, networkConfig.wifiConfig.ssid ) != 0 )
             {
+                if ( activeWifiSlotIndex != 0 )
+                {
+                    Log::info( "Skipping cloud Wi-Fi sync: active profile is slot %u", activeWifiSlotIndex );
+                    return;
+                }
+
                 Log::info(
                     "Updating saved Wi-Fi credentials in database old: %s, new: %s",
                     wifiConfig.saved_networks[ 0 ].ssid.data,
@@ -207,6 +233,22 @@ namespace AsnPlus
                 Log::error( "Failed to load mqttConfig from NVS" );
                 saveMqttConfig();    // Save default config if loading failed
             }
+
+            if ( Esp32::Nvs::load_config( activeWifiSlotIndex, (char *) ACTIVE_WIFI_SLOT_NVS_KEY ) != ESP_OK )
+            {
+                Log::warn( "No saved active Wi-Fi slot, using slot 0" );
+                activeWifiSlotIndex = 0;
+                saveActiveWifiSlotIndex();
+            }
+
+            if ( activeWifiSlotIndex >= Wifi::LegacyWifiConfig::MAX_SAVED )
+            {
+                Log::warn( "Invalid active Wi-Fi slot %u, resetting to 0", activeWifiSlotIndex );
+                activeWifiSlotIndex = 0;
+                saveActiveWifiSlotIndex();
+            }
+
+            _lastSavedActiveWifiSlotIndex = activeWifiSlotIndex;
 
             for ( uint8_t i = 0; i < DataSource::Manager::NUM_CHANNELS; ++i )
             {
@@ -246,6 +288,12 @@ namespace AsnPlus
                 Log::error( "Failed to save mqttConfig to NVS" );
         }
 
+        void saveActiveWifiSlotIndex()
+        {
+            if ( Esp32::Nvs::store_config( activeWifiSlotIndex, (char *) ACTIVE_WIFI_SLOT_NVS_KEY ) != ESP_OK )
+                Log::error( "Failed to save active Wi-Fi slot index to NVS" );
+        }
+
         void saveChannelConfig( uint8_t index )
         {
             char key[ 16 ];
@@ -265,6 +313,38 @@ namespace AsnPlus
     private:
         static constexpr const char TAG[] = "Database";
         using Log                         = Logger< ProjectConfig::LOG_LEVEL, TAG >;
+        Wifi::StaStatus _lastWifiStatus   = Wifi::StaStatus::DISCONNECTED;
+        uint8_t _lastSavedActiveWifiSlotIndex = 0;
+
+        void _updateActiveSlotFromConnectedSsid()
+        {
+            wifiConfig.status.connected_network_ssid.terminate();
+            const char * connectedSsid = wifiConfig.status.connected_network_ssid.data;
+            if ( connectedSsid[ 0 ] == '\0' )
+                return;
+
+            for ( uint8_t i = 0; i < Wifi::LegacyWifiConfig::MAX_SAVED; ++i )
+            {
+                wifiConfig.saved_networks[ i ].ssid.terminate();
+                const char * savedSsid = wifiConfig.saved_networks[ i ].ssid.data;
+                if ( savedSsid[ 0 ] == '\0' )
+                    continue;
+
+                if ( strcmp( savedSsid, connectedSsid ) != 0 )
+                    continue;
+
+                if ( activeWifiSlotIndex != i )
+                {
+                    Log::info( "Active Wi-Fi slot changed from %u to %u (SSID: %s )", activeWifiSlotIndex, i, connectedSsid );
+                    activeWifiSlotIndex = i;
+                    saveActiveWifiSlotIndex();
+                    _lastSavedActiveWifiSlotIndex = activeWifiSlotIndex;
+                }
+                return;
+            }
+
+            Log::warn( "Connected SSID '%s' not found in saved profiles, keeping active slot %u", connectedSsid, activeWifiSlotIndex );
+        }
     };
 
 }    // namespace AsnPlus
