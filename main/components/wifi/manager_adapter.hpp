@@ -101,7 +101,12 @@ namespace AsnPlus::Wifi
                             ssid,
                             static_cast< unsigned >( strlen( password ) )
                         );
-                        _selectActiveSlotBySsid( ssid, password );
+
+                        _legacyConfig.saved_networks[ 0 ].ssid.to_string()     = ssid;
+                        _legacyConfig.saved_networks[ 0 ].password.to_string() = password;
+                        _legacyConfig.store_saved_networks();
+                        _activeSlotIndex = 0;
+
                         _bleConnectNetwork.ssid.assign( ssid );
                         _bleConnectNetwork.password.assign( password );
                         _bleConnectOverrideActive = true;
@@ -134,79 +139,15 @@ namespace AsnPlus::Wifi
                 return;
             }
 
-            if ( _activeSlotIndex < ModuleConfig::Wifi::MAX_SAVED_NETWORKS )
-            {
-                SavedNetworkInfo & active = _legacyConfig.saved_networks[ _activeSlotIndex ];
-                active.ssid.terminate();
-                if ( active.ssid.data[ 0 ] != '\0' )
-                {
-                    _clearSavedRuntimeCandidates();
-                    _savedNetworks[ 0 ].ssid.assign( active.ssid.data );
-                    _savedNetworks[ 0 ].password.assign( active.password.data );
-                    return;
-                }
-            }
+            _activeSlotIndex = 0;
 
-            uint8_t dstIndex = 0;
-            if ( _activeSlotIndex < ModuleConfig::Wifi::MAX_SAVED_NETWORKS )
-            {
-                const SavedNetworkInfo & src = _legacyConfig.saved_networks[ _activeSlotIndex ];
-                WifiConfig &             dst = _savedNetworks[ dstIndex++ ];
-                dst.ssid.assign( src.ssid.data );
-                dst.password.assign( src.password.data );
-            }
+            SavedNetworkInfo & slot0 = _legacyConfig.saved_networks[ 0 ];
+            slot0.ssid.terminate();
+            slot0.password.terminate();
 
-            for ( uint8_t i = 0; i < ModuleConfig::Wifi::MAX_SAVED_NETWORKS; ++i )
-            {
-                if ( i == _activeSlotIndex )
-                    continue;
-
-                const SavedNetworkInfo & src = _legacyConfig.saved_networks[ i ];
-                WifiConfig &             dst = _savedNetworks[ dstIndex++ ];
-                dst.ssid.assign( src.ssid.data );
-                dst.password.assign( src.password.data );
-            }
-        }
-
-        void _selectActiveSlotBySsid( const char * targetSsid, const char * requestedPassword )
-        {
-            if ( targetSsid == nullptr || targetSsid[ 0 ] == '\0' )
-            {
-                Log::warn( "BLE CONNECT requested with empty SSID" );
-                return;
-            }
-
-            for ( uint8_t i = 0; i < ModuleConfig::Wifi::MAX_SAVED_NETWORKS; ++i )
-            {
-                _legacyConfig.saved_networks[ i ].ssid.terminate();
-                const char * savedSsid = _legacyConfig.saved_networks[ i ].ssid.data;
-                if ( savedSsid[ 0 ] == '\0' )
-                    continue;
-
-                if ( strcmp( savedSsid, targetSsid ) != 0 )
-                    continue;
-
-                _legacyConfig.saved_networks[ i ].password.terminate();
-                const char * savedPassword = _legacyConfig.saved_networks[ i ].password.data;
-                const bool passwordsMatch  = requestedPassword != nullptr && strcmp( savedPassword, requestedPassword ) == 0;
-                Log::warn(
-                    "BLE CONNECT matched slot %u ssid='%s' passwords_match=%s requested_len=%u saved_len=%u",
-                    i,
-                    targetSsid,
-                    passwordsMatch ? "true" : "false",
-                    static_cast< unsigned >( requestedPassword ? strlen( requestedPassword ) : 0 ),
-                    static_cast< unsigned >( strlen( savedPassword ) )
-                );
-
-                if ( _activeSlotIndex != i )
-                {
-                    Log::info( "Selecting Wi-Fi slot %u for BLE CONNECT to SSID '%s'", i, targetSsid );
-                    _activeSlotIndex = i;
-                }
-                return;
-            }
-
-            Log::warn( "BLE CONNECT SSID '%s' was not found in saved slots; active slot remains %u", targetSsid, _activeSlotIndex );
+            _clearSavedRuntimeCandidates();
+            _savedNetworks[ 0 ].ssid.assign( slot0.ssid.data );
+            _savedNetworks[ 0 ].password.assign( slot0.password.data );
         }
 
         void _clearSavedRuntimeCandidates()

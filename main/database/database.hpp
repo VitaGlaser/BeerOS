@@ -167,6 +167,12 @@ namespace AsnPlus
         {
             timeService.poll();
 
+            if ( activeWifiSlotIndex != 0 )
+            {
+                Log::warn( "Forcing active Wi-Fi slot to 0 (was %u)", activeWifiSlotIndex );
+                activeWifiSlotIndex = 0;
+            }
+
             if ( activeWifiSlotIndex != _lastSavedActiveWifiSlotIndex )
             {
                 Log::info(
@@ -178,40 +184,22 @@ namespace AsnPlus
                 _lastSavedActiveWifiSlotIndex = activeWifiSlotIndex;
             }
 
-            const Wifi::StaStatus currentWifiStatus = wifiConfig.status.sta_status;
-            if ( currentWifiStatus == Wifi::StaStatus::CONNECTED && _lastWifiStatus != Wifi::StaStatus::CONNECTED )
-            {
-                _updateActiveSlotFromConnectedSsid();
-            }
-            _lastWifiStatus = currentWifiStatus;
-            
             uptime    = static_cast< uint32_t >( Utils::getMs64() / 1000ULL );
 
             ethConfig = networkConfig.ethernetConfig;
 
-            if ( networkConfig.wifiConfig.ssid[ 0 ] != '\0' &&
-                 strcmp( wifiConfig.saved_networks[ 0 ].ssid.data, networkConfig.wifiConfig.ssid ) != 0 )
+            const bool networkConfigChanged = ( networkConfig.timestamp != _lastNetworkConfigTimestamp );
+            if ( networkConfigChanged )
             {
-                if ( activeWifiSlotIndex != 0 )
-                {
-                    Log::info( "Skipping cloud Wi-Fi sync: active profile is slot %u", activeWifiSlotIndex );
-                    return;
-                }
-
-                Log::info(
-                    "Updating saved Wi-Fi credentials in database old: %s, new: %s",
-                    wifiConfig.saved_networks[ 0 ].ssid.data,
-                    networkConfig.wifiConfig.ssid
-                );
-                strncpy( wifiConfig.saved_networks[ 0 ].ssid.data, networkConfig.wifiConfig.ssid, Wifi::SSID_LENGTH );
-                strncpy(
-                    wifiConfig.saved_networks[ 0 ].password.data,
-                    networkConfig.wifiConfig.password,
-                    Wifi::PASSWORD_LENGTH
-                );
-                wifiConfig.store_saved_networks();
-                wifiConfig.command = Wifi::Commands::DISCONNECT;
+                _applyNetworkConfigToSlot0();
+                _lastNetworkConfigTimestamp = networkConfig.timestamp;
             }
+            else
+            {
+                _syncSlot0ToNetworkConfig();
+            }
+
+            _snapshotSlot0Credentials();
         }
 
         void loadConfigs()
@@ -248,7 +236,16 @@ namespace AsnPlus
                 saveActiveWifiSlotIndex();
             }
 
+            if ( activeWifiSlotIndex != 0 )
+            {
+                Log::warn( "Wi-Fi is configured to use slot0 only, resetting active slot from %u to 0", activeWifiSlotIndex );
+                activeWifiSlotIndex = 0;
+                saveActiveWifiSlotIndex();
+            }
+
             _lastSavedActiveWifiSlotIndex = activeWifiSlotIndex;
+            _lastNetworkConfigTimestamp   = networkConfig.timestamp;
+            _snapshotSlot0Credentials();
 
             for ( uint8_t i = 0; i < DataSource::Manager::NUM_CHANNELS; ++i )
             {
@@ -313,37 +310,90 @@ namespace AsnPlus
     private:
         static constexpr const char TAG[] = "Database";
         using Log                         = Logger< ProjectConfig::LOG_LEVEL, TAG >;
-        Wifi::StaStatus _lastWifiStatus   = Wifi::StaStatus::DISCONNECTED;
         uint8_t _lastSavedActiveWifiSlotIndex = 0;
+        uint64_t _lastNetworkConfigTimestamp   = 0;
+        char _lastSlot0Ssid[ Wifi::SSID_LENGTH + 1 ] = {};
+        char _lastSlot0Password[ Wifi::PASSWORD_LENGTH + 1 ] = {};
 
-        void _updateActiveSlotFromConnectedSsid()
+        uint64_t _getConfigTimestampNow() const
         {
-            wifiConfig.status.connected_network_ssid.terminate();
-            const char * connectedSsid = wifiConfig.status.connected_network_ssid.data;
-            if ( connectedSsid[ 0 ] == '\0' )
-                return;
+            if ( timeRuntime.utcEpochMs > 0 ) return timeRuntime.utcEpochMs;
+            return Utils::getMs64();
+        }
 
-            for ( uint8_t i = 0; i < Wifi::LegacyWifiConfig::MAX_SAVED; ++i )
-            {
-                wifiConfig.saved_networks[ i ].ssid.terminate();
-                const char * savedSsid = wifiConfig.saved_networks[ i ].ssid.data;
-                if ( savedSsid[ 0 ] == '\0' )
-                    continue;
+        void _snapshotSlot0Credentials()
+        {
+            wifiConfig.saved_networks[ 0 ].ssid.terminate();
+            wifiConfig.saved_networks[ 0 ].password.terminate();
 
-                if ( strcmp( savedSsid, connectedSsid ) != 0 )
-                    continue;
+            strncpy( _lastSlot0Ssid, wifiConfig.saved_networks[ 0 ].ssid.data, Wifi::SSID_LENGTH );
+            _lastSlot0Ssid[ Wifi::SSID_LENGTH ] = '\0';
 
-                if ( activeWifiSlotIndex != i )
-                {
-                    Log::info( "Active Wi-Fi slot changed from %u to %u (SSID: %s )", activeWifiSlotIndex, i, connectedSsid );
-                    activeWifiSlotIndex = i;
-                    saveActiveWifiSlotIndex();
-                    _lastSavedActiveWifiSlotIndex = activeWifiSlotIndex;
-                }
-                return;
-            }
+            strncpy( _lastSlot0Password, wifiConfig.saved_networks[ 0 ].password.data, Wifi::PASSWORD_LENGTH );
+            _lastSlot0Password[ Wifi::PASSWORD_LENGTH ] = '\0';
+        }
 
-            Log::warn( "Connected SSID '%s' not found in saved profiles, keeping active slot %u", connectedSsid, activeWifiSlotIndex );
+        bool _slot0DiffersFromNetworkConfig() const
+        {
+            return (
+                strncmp( wifiConfig.saved_networks[ 0 ].ssid.data, networkConfig.wifiConfig.ssid, Wifi::SSID_LENGTH ) != 0 ||
+                strncmp( wifiConfig.saved_networks[ 0 ].password.data, networkConfig.wifiConfig.password, Wifi::PASSWORD_LENGTH ) != 0
+            );
+        }
+
+        bool _slot0ChangedSinceLastSnapshot() const
+        {
+            return (
+                strncmp( wifiConfig.saved_networks[ 0 ].ssid.data, _lastSlot0Ssid, Wifi::SSID_LENGTH ) != 0 ||
+                strncmp( wifiConfig.saved_networks[ 0 ].password.data, _lastSlot0Password, Wifi::PASSWORD_LENGTH ) != 0
+            );
+        }
+
+        void _applyNetworkConfigToSlot0()
+        {
+            wifiConfig.saved_networks[ 0 ].ssid.terminate();
+            wifiConfig.saved_networks[ 0 ].password.terminate();
+
+            if ( ! _slot0DiffersFromNetworkConfig() ) return;
+
+            Log::info(
+                "Applying networkConfig Wi-Fi to slot0 old: %s, new: %s",
+                wifiConfig.saved_networks[ 0 ].ssid.data,
+                networkConfig.wifiConfig.ssid
+            );
+
+            strncpy( wifiConfig.saved_networks[ 0 ].ssid.data, networkConfig.wifiConfig.ssid, Wifi::SSID_LENGTH );
+            wifiConfig.saved_networks[ 0 ].ssid.data[ Wifi::SSID_LENGTH - 1 ] = '\0';
+
+            strncpy( wifiConfig.saved_networks[ 0 ].password.data, networkConfig.wifiConfig.password, Wifi::PASSWORD_LENGTH );
+            wifiConfig.saved_networks[ 0 ].password.data[ Wifi::PASSWORD_LENGTH - 1 ] = '\0';
+
+            wifiConfig.store_saved_networks();
+            wifiConfig.command = Wifi::Commands::DISCONNECT;
+
+            networkConfig.timestamp   = _getConfigTimestampNow();
+            _lastNetworkConfigTimestamp = networkConfig.timestamp;
+            saveNetworkConfig();
+        }
+
+        void _syncSlot0ToNetworkConfig()
+        {
+            wifiConfig.saved_networks[ 0 ].ssid.terminate();
+            wifiConfig.saved_networks[ 0 ].password.terminate();
+
+            if ( ! _slot0ChangedSinceLastSnapshot() ) return;
+
+            Log::info( "Detected local slot0 Wi-Fi update, syncing to networkConfig" );
+
+            strncpy( networkConfig.wifiConfig.ssid, wifiConfig.saved_networks[ 0 ].ssid.data, Wifi::SSID_LENGTH );
+            networkConfig.wifiConfig.ssid[ Wifi::SSID_LENGTH - 1 ] = '\0';
+
+            strncpy( networkConfig.wifiConfig.password, wifiConfig.saved_networks[ 0 ].password.data, Wifi::PASSWORD_LENGTH );
+            networkConfig.wifiConfig.password[ Wifi::PASSWORD_LENGTH - 1 ] = '\0';
+
+            networkConfig.timestamp   = _getConfigTimestampNow();
+            _lastNetworkConfigTimestamp = networkConfig.timestamp;
+            saveNetworkConfig();
         }
     };
 
