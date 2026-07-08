@@ -6,7 +6,7 @@ namespace AsnPlus
 {
     struct ProjectConfig
     {
-        static constexpr TVersion< 0, 6, 4 > fwVersion {};
+        static constexpr TVersion< 0, 7, 1> fwVersion {};
         static constexpr uint32_t            DATA_MODEL_VERSION = 1;
 
         static constexpr uint8_t LOG_LEVEL                      = 2;

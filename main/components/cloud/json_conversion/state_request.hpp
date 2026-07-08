@@ -65,6 +65,7 @@ namespace AsnPlus::Cloud
         static constexpr const char TIMESTAMP_TAG[]        = "timestamp";
         static constexpr const char STATUS_TAG[]           = "status";
         static constexpr const char RUNTIME_TAG[]          = "runtime";
+        static constexpr const char BATT_TAG[]             = "batt";
         static constexpr const char FIRMWARE_INFO_TAG[]    = "firmwareInfo";
         static constexpr const char MANUFACTURE_INFO_TAG[] = "manufactureInfo";
         static constexpr const char CONNECTION_STATE_TAG[] = "connectionState";
@@ -117,6 +118,9 @@ namespace AsnPlus::Cloud
         uint64_t                 timestamp     = 0;
         AsnPlus::Status          status        = AsnPlus::Status::UNKNOWN;
         uint32_t                 runtime       = 0;
+        float                    batteryVoltage = 0.0f;
+        bool                     chargerAcOk = false;
+        bool                     chargerChgOk = false;
         AsnPlus::FirmwareInfo    firmwareInfo {};
         AsnPlus::ManufactureInfo manufactureInfo {};
         ConnectionState          connectionState {};
@@ -198,6 +202,7 @@ namespace AsnPlus::Cloud
         cJSON_AddNumberToObject( json, StateRequestJson::TIMESTAMP_TAG, static_cast< double >( request.timestamp ) );
         cJSON_AddNumberToObject( json, StateRequestJson::STATUS_TAG, static_cast< uint8_t >( request.status ) );
         cJSON_AddNumberToObject( json, StateRequestJson::RUNTIME_TAG, request.runtime );
+        cJSON_AddNumberToObject( json, StateRequestJson::BATT_TAG, request.batteryVoltage );
 
         cJSON * fwInfoJson = cJSON_CreateObject();
         toJson( request.firmwareInfo, fwInfoJson );

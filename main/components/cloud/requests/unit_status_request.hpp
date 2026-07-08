@@ -2,6 +2,7 @@
 
 #include "program/config.hpp"
 
+#include <cmath>
 #include <cstring>
 
 #include "cJSON.h"
@@ -187,6 +188,11 @@ namespace AsnPlus::Cloud
             cJSON_AddStringToObject( json, "uid", uidStr );
             cJSON_AddNumberToObject( json, "firmware", _stateRequest.firmwareInfo.version );
             cJSON_AddNumberToObject( json, "runtime", _stateRequest.runtime );
+            const double roundedBatteryVoltage =
+                std::round( static_cast< double >( _stateRequest.batteryVoltage ) * 1000.0 ) / 1000.0;
+            cJSON_AddNumberToObject( json, "batt", roundedBatteryVoltage );
+            cJSON_AddBoolToObject( json, "ACOK", _stateRequest.chargerAcOk );
+            cJSON_AddBoolToObject( json, "CHGOK", _stateRequest.chargerChgOk );
             cJSON_AddStringToObject( json, "otaStatus", _reportedOtaStatus );
             if ( _reportedOtaTargetVersion[ 0 ] != '\0' )
             {

@@ -209,11 +209,25 @@ namespace AsnPlus
         };
         Expander::PortPinGpio ltePower { expanderGpioConfig, expander.getPortB().pin( Pinout::LTE_POWER_KEY ) };
 
+        Expander::PortPinGpio::Config expanderInputGpioConfig {
+            IGpio::Config::PinMode::INPUT,
+            IGpio::Config::InterruptType::NONE
+        };
+        Expander::PortPinGpio chargerAcOk {
+            expanderInputGpioConfig,
+            expander.getPortA().pin( Pinout::CHARGER_ACOK_PIN )
+        };
+        Expander::PortPinGpio chargerChgOk {
+            expanderInputGpioConfig,
+            expander.getPortA().pin( Pinout::CHARGER_CHGOK_PIN )
+        };
+
         Expander::Adc::Adc          adc { expander.getAdc() };
         Expander::Adc::Adc::Channel adcChannel1 { adc.channel( 0 ) };
         Expander::Adc::Adc::Channel adcChannel2 { adc.channel( 1 ) };
         Expander::Adc::Adc::Channel adcChannel3 { adc.channel( 2 ) };
         Expander::Adc::Adc::Channel adcChannel4 { adc.channel( 3 ) };
+        Expander::Adc::Adc::Channel adcChannel5 { adc.channel( 4 ) };
 
         DataSource::Manager::AdcChannels adcChannels { adcChannel1, adcChannel2, adcChannel3, adcChannel4 };
 
@@ -307,6 +321,8 @@ namespace AsnPlus
         {
             ledStrip.poll();
             expander.poll();
+            _updateChargerStatus();
+            _updateBatteryVoltageEma();
         }
 
         void dataSourcePoll() { dataSourceManager.poll(); }
@@ -383,6 +399,10 @@ namespace AsnPlus
         }
 
         void lteUartPoll() { lteAtUart.poll(); }
+
+        bool isChargerAcPresent() { return ! chargerAcOk.get(); }
+
+        bool isChargerCharging() { return ! chargerChgOk.get(); }
 
         static void systemTask( void * pvParameters )
         {
@@ -605,7 +625,10 @@ namespace AsnPlus
 
             ltePower.initialize();
 
-            // expander.getPortA().enable();
+            chargerAcOk.initialize();
+            chargerChgOk.initialize();
+
+            expander.getPortA().enable();
             expander.getPortB().enable();
 
             expander.getAdc().setSamplingFrequency( Expander::Adc::ADCCTRL::SamplingFrequency::SMP1 );
@@ -618,6 +641,8 @@ namespace AsnPlus
             adcChannel3.setFilter( Expander::Adc::ADCMxCFG::LPFrequency::LPF20K );
             adcChannel4.setPhysicalChannel( Expander::Adc::ADCMxCFG::ChannelSelect::CH8 );
             adcChannel4.setFilter( Expander::Adc::ADCMxCFG::LPFrequency::LPF20K );
+            adcChannel5.setPhysicalChannel( Expander::Adc::ADCMxCFG::ChannelSelect::CH10 ); // Bat
+            adcChannel5.setFilter( Expander::Adc::ADCMxCFG::LPFrequency::LPF5 );
 
             expander.getAdc().startCalibration();
             expander.getAdc().waitCalibration();
@@ -739,6 +764,72 @@ namespace AsnPlus
                 Log::error( "Failed to create ota task" );
             }
 
+        }
+
+        void _updateBatteryVoltageEma()
+        {
+            static constexpr uint64_t UPDATE_INTERVAL_MS = 1000;
+            static constexpr uint8_t  SAMPLE_BUFFER_SIZE = 24;
+            static uint16_t           sampleBuffer[ SAMPLE_BUFFER_SIZE ] {};
+            static uint8_t            sampleCount = 0;
+            static uint8_t            sampleIndex = 0;
+            static uint64_t           lastUpdateMs = 0;
+            static bool               emaInitialized = false;
+            static float              emaVoltage = 0.0f;
+
+            static constexpr float ADC_REF_VOLTAGE_V = 3.3f;
+            static constexpr float ADC_MAX_COUNT      = 4095.0f;
+            static constexpr float DIVIDER_FACTOR     = 3.0f;
+            static constexpr float CALIBRATION_FACTOR = 0.8978f;
+            static constexpr float EMA_ALPHA          = 0.20f;
+
+            const uint16_t rawValue = adcChannel5.getValue();
+            sampleBuffer[ sampleIndex ] = rawValue;
+            sampleIndex                 = ( sampleIndex + 1 ) % SAMPLE_BUFFER_SIZE;
+            if ( sampleCount < SAMPLE_BUFFER_SIZE ) ++sampleCount;
+
+            const uint64_t nowMs = Utils::getMs64();
+            if ( nowMs - lastUpdateMs < UPDATE_INTERVAL_MS || sampleCount == 0 ) return;
+            lastUpdateMs = nowMs;
+
+            uint32_t sumRaw = 0;
+            uint16_t minRaw = sampleBuffer[ 0 ];
+            uint16_t maxRaw = sampleBuffer[ 0 ];
+
+            for ( uint8_t i = 0; i < sampleCount; ++i )
+            {
+                const uint16_t sample = sampleBuffer[ i ];
+                sumRaw += sample;
+                if ( sample < minRaw ) minRaw = sample;
+                if ( sample > maxRaw ) maxRaw = sample;
+            }
+
+            float avgRaw = static_cast< float >( sumRaw ) / sampleCount;
+            if ( sampleCount >= 3 )
+            {
+                avgRaw = static_cast< float >( sumRaw - minRaw - maxRaw ) / ( sampleCount - 2 );
+            }
+
+            const float adcVoltage     = ( avgRaw / ADC_MAX_COUNT ) * ADC_REF_VOLTAGE_V;
+            const float instantBatteryVoltage = adcVoltage * DIVIDER_FACTOR * CALIBRATION_FACTOR;
+
+            if ( ! emaInitialized )
+            {
+                emaVoltage = instantBatteryVoltage;
+                emaInitialized = true;
+            }
+            else
+            {
+                emaVoltage = ( EMA_ALPHA * instantBatteryVoltage ) + ( ( 1.0f - EMA_ALPHA ) * emaVoltage );
+            }
+
+            database.batteryVoltage = emaVoltage;
+        }
+
+        void _updateChargerStatus()
+        {
+            database.chargerAcOk  = isChargerAcPresent();
+            database.chargerChgOk = isChargerCharging();
         }
     };
 }    // namespace AsnPlus

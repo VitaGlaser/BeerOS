@@ -31,5 +31,8 @@ namespace AsnPlus
             LTE_UART_TX                        = gpio_num_t::GPIO_NUM_18;
 
         static constexpr uint8_t LTE_POWER_KEY = 8;
+
+        static constexpr uint8_t CHARGER_ACOK_PIN  = 14;
+        static constexpr uint8_t CHARGER_CHGOK_PIN = 15;
     };
 }    // namespace AsnPlus

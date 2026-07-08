@@ -6,6 +6,8 @@ namespace AsnPlus::Cloud
 {
     static constexpr const char DEVELOP_URL_BASE[] = "https://europe-west3-cleverpub-dev.cloudfunctions.net/deviceApi";
     static constexpr const char STAGING_URL_BASE[] = "https://europe-west3-cleverpub-dev.cloudfunctions.net/deviceApi";
+    //static constexpr const char DEVELOP_URL_BASE[] = "https://europe-west3-cleverpub-prod.cloudfunctions.net/deviceApi";
+  //  static constexpr const char STAGING_URL_BASE[] = "https://europe-west3-cleverpub-prod.cloudfunctions.net/deviceApi";
     static constexpr const char PRODUCTION_URL_BASE[]        = "";
 
     static constexpr const char MOCK_TIME_CONFIG_URL[]       = "timeConfig";

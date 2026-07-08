@@ -47,6 +47,7 @@ namespace AsnPlus
             EventType type           = EventType::UNKNOWN;
             uint32_t  volume         = 0;
             uint64_t  pulseCount     = 0;
+            bool      discarded      = false;
 
             uint8_t classification   = 0;
 
@@ -289,7 +290,19 @@ namespace AsnPlus
                 _onEventEnd( *_currentEvent );
             }
 
-            _eventHistory.push( *_currentEvent );
+            if ( ! _currentEvent->discarded )
+            {
+                _eventHistory.push( *_currentEvent );
+            }
+            else
+            {
+                Log::info(
+                    "Discarded event seq=%llu from history push (pulses=%llu, volume=%u)",
+                    _currentEvent->sequenceNumber,
+                    _currentEvent->pulseCount,
+                    _currentEvent->volume
+                );
+            }
             _lastSeqNum = static_cast< uint32_t >( _currentEvent->sequenceNumber );
 
             Log::warn(

@@ -326,6 +326,8 @@ namespace AsnPlus
         static constexpr const char TAG[] = "Channel";
         using Log                         = Logger< ProjectConfig::LOG_LEVEL_CHANNEL, TAG >;
 
+        static constexpr uint16_t MIN_PULSE_COUNT_THRESHOLD = 2;
+
         uint8_t _index;
 
         Config &  _config;
@@ -358,6 +360,20 @@ namespace AsnPlus
 
         void _onEventEnd( EventMonitor::Event & event )
         {
+            if ( event.pulseCount < MIN_PULSE_COUNT_THRESHOLD )
+            {
+                event.discarded = true;
+                _lastSeqNum     = static_cast< uint32_t >( event.sequenceNumber );
+
+                Log::info(
+                    " (%u) Event discarded due to low pulse count (pulses=%llu, threshold=%u)",
+                    _index,
+                    event.pulseCount,
+                    MIN_PULSE_COUNT_THRESHOLD
+                );
+                return;
+            }
+
             int8_t classificationIndex = -1;
 
             // TODO(DK): This should categorize beverage in the event and add the information the eventMonitor doesnt

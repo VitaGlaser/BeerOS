@@ -727,6 +727,9 @@ namespace AsnPlus::Cloud
             _stateRequestData.timestamp                     = _database.timeRuntime.utcEpochMs;
             _stateRequestData.status                        = AsnPlus::Status::OK;
             _stateRequestData.runtime                       = _database.uptime;
+            _stateRequestData.batteryVoltage                = _database.batteryVoltage;
+            _stateRequestData.chargerAcOk                   = _database.chargerAcOk;
+            _stateRequestData.chargerChgOk                  = _database.chargerChgOk;
             _stateRequestData.firmwareInfo.version          = ProjectConfig::fwVersion.NUMBER;
             _stateRequestData.firmwareInfo.dataModelVersion = ProjectConfig::DATA_MODEL_VERSION;
             _stateRequestData.manufactureInfo               = _database.manufactureInfo;

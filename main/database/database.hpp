@@ -117,6 +117,9 @@ namespace AsnPlus
         RingBufferExt< EventMonitor::Event > eventHistory3 { eventHistory3Buffer, EventMonitor::MAX_EVENT_HISTORY };
 
         uint32_t uptime = 0;
+        float    batteryVoltage = 0.0f;
+        bool     chargerAcOk = false;
+        bool     chargerChgOk = false;
 
         Connection::Config  connectionModuleConfig { 0, true, true, true, false, false };
         Connection::Runtime connectionModuleRuntime {};
