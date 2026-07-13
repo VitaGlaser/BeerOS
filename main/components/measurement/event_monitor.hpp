@@ -44,6 +44,7 @@ namespace AsnPlus
             uint64_t  startTimestamp = 0;
             uint64_t  endTimestamp   = 0;
             bool      synced         = false;
+            bool      syncedAutomation = false;
             EventType type           = EventType::UNKNOWN;
             uint32_t  volume         = 0;
             uint64_t  pulseCount     = 0;

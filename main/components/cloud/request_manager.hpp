@@ -3,6 +3,7 @@
 #include <cstring>
 
 #include "freertos/FreeRTOS.h"
+#include "esp_system.h"
 
 #include "asn/asn-core/logger.hpp"
 #include "asn/asn-core/timer.hpp"
@@ -48,6 +49,7 @@ namespace AsnPlus::Cloud
             Log::info( "Initializing" );
 
             _environment = _database.manufactureInfo.environment;
+            _bootId = esp_random();
             _reloadEnvironment();
 
             if ( ! _statePostRequest.initialize() )
@@ -239,10 +241,52 @@ namespace AsnPlus::Cloud
                     Log::debug( "Channel %u config is up to date", i + 1 );
             }
 
-                for ( uint8_t i = 0; i < 4; ++i )
+                uint8_t sentEventCount = 0;
+                while ( sentEventCount < MAX_CHANNEL_HISTORY_SENDS_PER_CYCLE )
                 {
-                    _channelEventRequestPtrs[ i ]->send();
-                    _channelProfileWebhookRequestPtrs[ i ]->send();
+                    bool sentInThisPass = false;
+                    for ( uint8_t i = 0; i < 4; ++i )
+                    {
+                        auto result = _channelEventRequestPtrs[ i ]->sendOne();
+                        if ( result == ChannelEventRequest::SendResult::FAILED )
+                        {
+                            sentInThisPass = false;
+                            break;
+                        }
+
+                        if ( result == ChannelEventRequest::SendResult::SENT )
+                        {
+                            ++sentEventCount;
+                            sentInThisPass = true;
+                            if ( sentEventCount >= MAX_CHANNEL_HISTORY_SENDS_PER_CYCLE ) break;
+                        }
+                    }
+
+                    if ( ! sentInThisPass ) break;
+                }
+
+                uint8_t sentWebhookEventCount = 0;
+                while ( sentWebhookEventCount < MAX_CHANNEL_HISTORY_SENDS_PER_CYCLE )
+                {
+                    bool sentInThisPass = false;
+                    for ( uint8_t i = 0; i < 4; ++i )
+                    {
+                        auto result = _channelProfileWebhookRequestPtrs[ i ]->sendOne();
+                        if ( result == ChannelEventRequest::SendResult::FAILED )
+                        {
+                            sentInThisPass = false;
+                            break;
+                        }
+
+                        if ( result == ChannelEventRequest::SendResult::SENT )
+                        {
+                            ++sentWebhookEventCount;
+                            sentInThisPass = true;
+                            if ( sentWebhookEventCount >= MAX_CHANNEL_HISTORY_SENDS_PER_CYCLE ) break;
+                        }
+                    }
+
+                    if ( ! sentInThisPass ) break;
                 }
 
                 _sendStateOnNextTick = false;
@@ -250,6 +294,7 @@ namespace AsnPlus::Cloud
             }
 
             _buildStateRequest();
+            _updateUnitStatusDiagnostics();
 
             if ( ! _unitStatusRequest.send() )
             {
@@ -313,6 +358,7 @@ namespace AsnPlus::Cloud
         {
             if ( ! _client ) return false;
             _buildStateRequest();
+            _updateUnitStatusDiagnostics();
             return _unitStatusRequest.send();
         }
 
@@ -364,6 +410,7 @@ namespace AsnPlus::Cloud
         using Log                             = Logger< ProjectConfig::LOG_LEVEL_CLOUD, TAG >;
 
         static constexpr uint16_t BUFFER_SIZE = 12288;
+        static constexpr uint8_t  MAX_CHANNEL_HISTORY_SENDS_PER_CYCLE = 5;
 
         // ─── Infrastructure ───────────────────────────────────────────────────
 
@@ -551,8 +598,9 @@ namespace AsnPlus::Cloud
             _buffer,
             _responseBuffer,
             true,
-            false,
-            true
+            true,
+            true,
+            ChannelEventRequest::SyncTarget::AUTOMATION
         };
 
         ChannelEventRequest _channelProfileWebhookRequest1 {
@@ -561,8 +609,9 @@ namespace AsnPlus::Cloud
             _buffer,
             _responseBuffer,
             true,
-            false,
-            true
+            true,
+            true,
+            ChannelEventRequest::SyncTarget::AUTOMATION
         };
 
         ChannelEventRequest _channelProfileWebhookRequest2 {
@@ -571,8 +620,9 @@ namespace AsnPlus::Cloud
             _buffer,
             _responseBuffer,
             true,
-            false,
-            true
+            true,
+            true,
+            ChannelEventRequest::SyncTarget::AUTOMATION
         };
 
         ChannelEventRequest _channelProfileWebhookRequest3 {
@@ -581,8 +631,9 @@ namespace AsnPlus::Cloud
             _buffer,
             _responseBuffer,
             true,
-            false,
-            true
+            true,
+            true,
+            ChannelEventRequest::SyncTarget::AUTOMATION
         };
 
         Array< ChannelEventRequest *, 4 > _channelProfileWebhookRequestPtrs {
@@ -639,6 +690,7 @@ namespace AsnPlus::Cloud
         OtaJob _otaJob {};
         bool   _otaJobPending = false;
         portMUX_TYPE _otaJobMux = portMUX_INITIALIZER_UNLOCKED;
+        uint32_t _bootId = 0;
 
         Array< IFirestoreRequest::Config, 4 > _channelConfigPostConfigs {
             {
@@ -748,6 +800,76 @@ namespace AsnPlus::Cloud
                 ch.temperature = static_cast< uint64_t >( runtime.temperature );
                 ch.pressure    = static_cast< uint64_t >( runtime.pressure );
             }
+        }
+
+        static const char * _resetReasonToString( esp_reset_reason_t reason )
+        {
+            switch ( reason )
+            {
+                case ESP_RST_POWERON:
+                    return "poweron";
+                case ESP_RST_EXT:
+                    return "ext";
+                case ESP_RST_SW:
+                    return "sw";
+                case ESP_RST_PANIC:
+                    return "panic";
+                case ESP_RST_INT_WDT:
+                    return "int_wdt";
+                case ESP_RST_TASK_WDT:
+                    return "task_wdt";
+                case ESP_RST_WDT:
+                    return "wdt";
+                case ESP_RST_DEEPSLEEP:
+                    return "deepsleep";
+                case ESP_RST_BROWNOUT:
+                    return "brownout";
+                case ESP_RST_SDIO:
+                    return "sdio";
+                default:
+                    return "unknown";
+            }
+        }
+
+        uint32_t _getPendingEventCount() const
+        {
+            uint32_t pending = 0;
+
+            for ( const auto & event : _database.eventHistory0 )
+            {
+                if ( ! event.synced ) ++pending;
+            }
+            for ( const auto & event : _database.eventHistory1 )
+            {
+                if ( ! event.synced ) ++pending;
+            }
+            for ( const auto & event : _database.eventHistory2 )
+            {
+                if ( ! event.synced ) ++pending;
+            }
+            for ( const auto & event : _database.eventHistory3 )
+            {
+                if ( ! event.synced ) ++pending;
+            }
+
+            return pending;
+        }
+
+        void _updateUnitStatusDiagnostics()
+        {
+            const esp_reset_reason_t resetReason = esp_reset_reason();
+
+            _unitStatusRequest.setDiagnostics(
+                _bootId,
+                _database.resetCountTotal,
+                static_cast< uint32_t >( resetReason ),
+                _resetReasonToString( resetReason ),
+                static_cast< int32_t >( _database.wifiConfig.status.rssi ),
+                esp_get_free_heap_size(),
+                esp_get_minimum_free_heap_size(),
+                Utils::getMs64(),
+                _getPendingEventCount()
+            );
         }
 
         void _queueOtaJob( const char * version, const char * url, bool mandatory )

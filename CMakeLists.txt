@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(BeerOS_0_7_1)
+project(BeerOS_0_7_2)
 
 set(ASN_CUSTOMER_EXPORT_COMPONENT customer-export)
 

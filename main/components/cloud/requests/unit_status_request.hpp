@@ -45,6 +45,32 @@ namespace AsnPlus::Cloud
         bool isOtaMandatory() const { return _otaMandatory; }
         const char * getOtaVersion() const { return _otaVersion; }
         const char * getOtaUrl() const { return _otaUrl; }
+        void setDiagnostics(
+            uint32_t     bootId,
+            uint32_t     resetCountTotal,
+            uint32_t     resetReasonRaw,
+            const char * resetReason,
+            int32_t      rssi,
+            uint32_t     freeHeap,
+            uint32_t     heapMinFree,
+            uint64_t     uptimeMs,
+            uint32_t     eventQueueDepth
+        )
+        {
+            _bootId          = bootId;
+            _resetCountTotal = resetCountTotal;
+            _resetReasonRaw  = resetReasonRaw;
+            _rssi            = rssi;
+            _freeHeap        = freeHeap;
+            _heapMinFree     = heapMinFree;
+            _uptimeMs        = uptimeMs;
+            _eventQueueDepth = eventQueueDepth;
+
+            if ( resetReason && resetReason[ 0 ] != '\0' )
+                StringExt( _resetReason, _resetReason, sizeof( _resetReason ) ).assign( resetReason );
+            else
+                StringExt( _resetReason, _resetReason, sizeof( _resetReason ) ).assign( "unknown" );
+        }
         void setReportedOtaStatus( const char * status, const char * targetVersion = nullptr )
         {
             if ( status && status[ 0 ] != '\0' )
@@ -124,6 +150,16 @@ namespace AsnPlus::Cloud
         char                 _otaUrl[ 192 ] {};
         char                 _reportedOtaStatus[ 16 ] { 'i', 'd', 'l', 'e', '\0' };
         char                 _reportedOtaTargetVersion[ 32 ] {};
+        uint32_t             _messageSeqSinceBoot = 0;
+        uint32_t             _bootId              = 0;
+        uint32_t             _resetCountTotal     = 0;
+        uint32_t             _resetReasonRaw      = 0;
+        char                 _resetReason[ 32 ] { 'u', 'n', 'k', 'n', 'o', 'w', 'n', '\0' };
+        int32_t              _rssi                = 0;
+        uint32_t             _freeHeap            = 0;
+        uint32_t             _heapMinFree         = 0;
+        uint64_t             _uptimeMs            = 0;
+        uint32_t             _eventQueueDepth     = 0;
 
         void _parseResponse()
         {
@@ -184,10 +220,20 @@ namespace AsnPlus::Cloud
             memcpy( uidStr, _stateRequest.manufactureInfo.uid, ManufactureInfo::UID_LENGTH );
             uidStr[ ManufactureInfo::UID_LENGTH ] = '\0';
 
+            cJSON_AddNumberToObject( json, "bootId", _bootId );
+            cJSON_AddNumberToObject( json, "msgSeqSinceBoot", ++_messageSeqSinceBoot );
             cJSON_AddNumberToObject( json, "timestamp", static_cast< double >( _stateRequest.timestamp ) );
             cJSON_AddStringToObject( json, "uid", uidStr );
             cJSON_AddNumberToObject( json, "firmware", _stateRequest.firmwareInfo.version );
             cJSON_AddNumberToObject( json, "runtime", _stateRequest.runtime );
+            cJSON_AddNumberToObject( json, "uptimeMs", static_cast< double >( _uptimeMs ) );
+            cJSON_AddNumberToObject( json, "resetCountTotal", _resetCountTotal );
+            cJSON_AddStringToObject( json, "resetReason", _resetReason );
+            cJSON_AddNumberToObject( json, "resetReasonRaw", _resetReasonRaw );
+            cJSON_AddNumberToObject( json, "rssi", _rssi );
+            cJSON_AddNumberToObject( json, "freeHeap", _freeHeap );
+            cJSON_AddNumberToObject( json, "heapMinFree", _heapMinFree );
+            cJSON_AddNumberToObject( json, "eventQueueDepth", _eventQueueDepth );
             const double roundedBatteryVoltage =
                 std::round( static_cast< double >( _stateRequest.batteryVoltage ) * 1000.0 ) / 1000.0;
             cJSON_AddNumberToObject( json, "batt", roundedBatteryVoltage );

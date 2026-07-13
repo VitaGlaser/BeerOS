@@ -16,6 +16,19 @@ namespace AsnPlus::Cloud
     class ChannelEventRequest : public IFirestoreRequest
     {
     public:
+        enum class SyncTarget : uint8_t
+        {
+            CLEVERPUB,
+            AUTOMATION
+        };
+
+        enum class SendResult : uint8_t
+        {
+            NO_EVENT,
+            SENT,
+            FAILED
+        };
+
         ChannelEventRequest(
             IRingBuffer< EventMonitor::Event > & eventHistory,
             IFirestoreRequest::Config &          config,
@@ -23,7 +36,8 @@ namespace AsnPlus::Cloud
             IVector< uint8_t > &                 responseBuffer,
             bool                                 includeProfiles = true,
             bool                                 useSyncedFlag   = true,
-            bool                                 useDirectUrl    = false
+            bool                                 useDirectUrl    = false,
+            SyncTarget                           syncTarget      = SyncTarget::CLEVERPUB
         ) :
             IFirestoreRequest( config ),
             _config( config ),
@@ -32,7 +46,8 @@ namespace AsnPlus::Cloud
             _responseBuffer( responseBuffer ),
             _includeProfiles( includeProfiles ),
             _useSyncedFlag( useSyncedFlag ),
-            _useDirectUrl( useDirectUrl )
+            _useDirectUrl( useDirectUrl ),
+            _syncTarget( syncTarget )
         {
         }
 
@@ -70,13 +85,18 @@ namespace AsnPlus::Cloud
 
         bool send() override
         {
+            return sendOne() != SendResult::FAILED;
+        }
+
+        SendResult sendOne()
+        {
             for ( auto & event : _eventHistory )
             {
                 if ( event.startTimestamp == 0 || event.endTimestamp == 0 ) continue;
 
                 if ( _useSyncedFlag )
                 {
-                    if ( event.synced ) continue;
+                    if ( _isEventSynced( event ) ) continue;
                 }
                 else
                 {
@@ -86,7 +106,7 @@ namespace AsnPlus::Cloud
                 bool sent = _sendEvent( event );
                 if ( sent )
                 {
-                    if ( _useSyncedFlag ) event.synced = true;
+                    if ( _useSyncedFlag ) _markEventSynced( event );
                     _lastSentSequenceNumber = event.sequenceNumber;
                 }
                 else
@@ -94,15 +114,16 @@ namespace AsnPlus::Cloud
                     Log::warn( "Failed to send event seq=%llu — will retry next poll", event.sequenceNumber );
                 }
 
-                return sent;
+                return sent ? SendResult::SENT : SendResult::FAILED;
             }
 
-            return true;
+            return SendResult::NO_EVENT;
         }
 
     private:
         static constexpr const char TAG[] = "ChannelEventRequest";
         using Log                         = Logger< ProjectConfig::LOG_LEVEL_CLOUD_REQUESTS, TAG >;
+        static constexpr const char UID_TAG[] = "uid";
 
         IFirestoreRequest::Config &          _config;
         IRingBuffer< EventMonitor::Event > & _eventHistory;
@@ -111,7 +132,36 @@ namespace AsnPlus::Cloud
         bool                                 _includeProfiles       = true;
         bool                                 _useSyncedFlag         = true;
         bool                                 _useDirectUrl          = false;
+        SyncTarget                           _syncTarget            = SyncTarget::CLEVERPUB;
         uint64_t                             _lastSentSequenceNumber = 0;
+
+        bool _isEventSynced( const EventMonitor::Event & event ) const
+        {
+            switch ( _syncTarget )
+            {
+                case SyncTarget::AUTOMATION:
+                    return event.syncedAutomation;
+
+                case SyncTarget::CLEVERPUB:
+                default:
+                    return event.synced;
+            }
+        }
+
+        void _markEventSynced( EventMonitor::Event & event ) const
+        {
+            switch ( _syncTarget )
+            {
+                case SyncTarget::AUTOMATION:
+                    event.syncedAutomation = true;
+                    break;
+
+                case SyncTarget::CLEVERPUB:
+                default:
+                    event.synced = true;
+                    break;
+            }
+        }
 
         bool _sendEvent( EventMonitor::Event & event )
         {
@@ -132,6 +182,14 @@ namespace AsnPlus::Cloud
 
             toJson( event, eventJson, _includeProfiles );
             cJSON_AddItemToObject( requestJson, ChannelEventRequestJson::EVENT_TAG, eventJson );
+
+            // Automation webhook uses direct URL, so include unit UID in the payload body.
+            if ( _useDirectUrl && _config.uid != nullptr )
+            {
+                char uidStr[ ManufactureInfo::UID_LENGTH + 1 ] {};
+                memcpy( uidStr, _config.uid, ManufactureInfo::UID_LENGTH );
+                cJSON_AddStringToObject( requestJson, UID_TAG, uidStr );
+            }
 
             char * body = cJSON_PrintUnformatted( requestJson );
             cJSON_Delete( requestJson );

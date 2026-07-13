@@ -120,6 +120,7 @@ namespace AsnPlus
         float    batteryVoltage = 0.0f;
         bool     chargerAcOk = false;
         bool     chargerChgOk = false;
+        uint32_t resetCountTotal = 0;
 
         Connection::Config  connectionModuleConfig { 0, true, true, true, false, false };
         Connection::Runtime connectionModuleRuntime {};
@@ -135,6 +136,7 @@ namespace AsnPlus
         static constexpr const char DEVICE_CONFIG_NVS_KEY[]  = "device_cfg";
         static constexpr const char NETWORK_CONFIG_NVS_KEY[] = "network_cfg";
         static constexpr const char MQTT_CONFIG_NVS_KEY[]    = "mqtt_cfg";
+        static constexpr const char RESET_COUNT_NVS_KEY[]    = "reset_count";
         static constexpr const char ACTIVE_WIFI_SLOT_NVS_KEY[] = "act_wifi_slot";
         static constexpr const char CH_CONFIG_NVS_KEY_FMT[]  = "ch_cfg_%u";
         static constexpr const char CH_SEQ_NVS_KEY_FMT[]     = "ch_seq_%u";
@@ -158,6 +160,9 @@ namespace AsnPlus
             }
 
             loadConfigs();
+
+            ++resetCountTotal;
+            saveResetCountTotal();
 
             char uidStr[ ManufactureInfo::UID_LENGTH + 1 ] = {};
             memcpy( uidStr, manufactureInfo.uid, ManufactureInfo::UID_LENGTH );
@@ -225,6 +230,12 @@ namespace AsnPlus
                 saveMqttConfig();    // Save default config if loading failed
             }
 
+            if ( Esp32::Nvs::load_config( resetCountTotal, (char *) RESET_COUNT_NVS_KEY ) != ESP_OK )
+            {
+                Log::warn( "No saved reset count, starting from 0" );
+                resetCountTotal = 0;
+            }
+
             if ( Esp32::Nvs::load_config( activeWifiSlotIndex, (char *) ACTIVE_WIFI_SLOT_NVS_KEY ) != ESP_OK )
             {
                 Log::warn( "No saved active Wi-Fi slot, using slot 0" );
@@ -286,6 +297,12 @@ namespace AsnPlus
         {
             if ( Esp32::Nvs::store_config( mqttConfig, (char *) MQTT_CONFIG_NVS_KEY ) != ESP_OK )
                 Log::error( "Failed to save mqttConfig to NVS" );
+        }
+
+        void saveResetCountTotal()
+        {
+            if ( Esp32::Nvs::store_config( resetCountTotal, (char *) RESET_COUNT_NVS_KEY ) != ESP_OK )
+                Log::error( "Failed to save resetCountTotal to NVS" );
         }
 
         void saveActiveWifiSlotIndex()
