@@ -172,10 +172,12 @@ namespace AsnPlus::Cloud
 
                 if ( ! _statePostRequest.send() )    // response updates _stateResponse in-place
                 {
+                    _onCloudRequestFailure( "state_post" );
                     Log::error( "State POST failed — skipping config/event requests" );
                     _sendStateOnNextTick = false;
                     return;
                 }
+                _onCloudRequestSuccess( "state_post" );
 
             if ( _onStartup )
             {
@@ -298,11 +300,13 @@ namespace AsnPlus::Cloud
 
             if ( ! _unitStatusRequest.send() )
             {
+                _onCloudRequestFailure( "unit_status" );
                 Log::warn( "Unit status POST failed" );
                 _sendStateOnNextTick = true;
                 return;
             }
-            else if ( _unitStatusRequest.isOtaAvailable() )
+            _onCloudRequestSuccess( "unit_status" );
+            if ( _unitStatusRequest.isOtaAvailable() )
             {
                 _queueOtaJob(
                     _unitStatusRequest.getOtaVersion(),
@@ -359,7 +363,19 @@ namespace AsnPlus::Cloud
             if ( ! _client ) return false;
             _buildStateRequest();
             _updateUnitStatusDiagnostics();
-            return _unitStatusRequest.send();
+            const bool ok = _unitStatusRequest.send();
+            if ( ok )
+                _onCloudRequestSuccess( "unit_status_now" );
+            else
+                _onCloudRequestFailure( "unit_status_now" );
+            return ok;
+        }
+
+        bool consumeWifiReconnectRequest()
+        {
+            if ( ! _wifiReconnectRequested ) return false;
+            _wifiReconnectRequested = false;
+            return true;
         }
 
         void setStateTimerInterval( uint32_t interval_ms )
@@ -411,6 +427,7 @@ namespace AsnPlus::Cloud
 
         static constexpr uint16_t BUFFER_SIZE = 12288;
         static constexpr uint8_t  MAX_CHANNEL_HISTORY_SENDS_PER_CYCLE = 5;
+        static constexpr uint8_t  WIFI_RECONNECT_FAIL_THRESHOLD       = 5;
 
         // ─── Infrastructure ───────────────────────────────────────────────────
 
@@ -426,6 +443,8 @@ namespace AsnPlus::Cloud
         uint32_t _stateIntervalMs = 0;
         uint32_t _pollTickIntervalMs = 0;
         bool     _sendStateOnNextTick = true;
+        uint8_t  _consecutiveCloudSendFailures = 0;
+        bool     _wifiReconnectRequested       = false;
 
         StateResponse _stateResponse {};
         StateRequest  _stateRequestData {};
@@ -870,6 +889,38 @@ namespace AsnPlus::Cloud
                 Utils::getMs64(),
                 _getPendingEventCount()
             );
+        }
+
+        void _onCloudRequestSuccess( const char * context )
+        {
+            if ( _consecutiveCloudSendFailures > 0 )
+            {
+                Log::info(
+                    "Cloud request '%s' succeeded after %u consecutive failures",
+                    context,
+                    static_cast< unsigned >( _consecutiveCloudSendFailures )
+                );
+            }
+            _consecutiveCloudSendFailures = 0;
+        }
+
+        void _onCloudRequestFailure( const char * context )
+        {
+            if ( _consecutiveCloudSendFailures < 255 ) ++_consecutiveCloudSendFailures;
+
+            Log::warn(
+                "Cloud request '%s' failed (%u/%u)",
+                context,
+                static_cast< unsigned >( _consecutiveCloudSendFailures ),
+                static_cast< unsigned >( WIFI_RECONNECT_FAIL_THRESHOLD )
+            );
+
+            if ( _consecutiveCloudSendFailures < WIFI_RECONNECT_FAIL_THRESHOLD ) return;
+            if ( _wifiReconnectRequested ) return;
+
+            _wifiReconnectRequested       = true;
+            _consecutiveCloudSendFailures = 0;
+            Log::warn( "Reached %u consecutive cloud failures, requesting Wi-Fi reconnect", WIFI_RECONNECT_FAIL_THRESHOLD );
         }
 
         void _queueOtaJob( const char * version, const char * url, bool mandatory )

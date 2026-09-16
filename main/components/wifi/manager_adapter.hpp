@@ -43,12 +43,21 @@ namespace AsnPlus::Wifi
         {
             _syncCommandFromLegacy();
             _syncSavedNetworksFromLegacy();
+            _processReconnectRequest();
             _manager.poll();
             _syncStateToLegacy();
             _syncScannedNetworksToLegacy();
         }
 
         bool is_connected() const { return _staRuntime.state == ISta::State::CONNECTED; }
+
+        void requestReconnect()
+        {
+            if ( _reconnectRequested ) return;
+            _reconnectRequested        = true;
+            _reconnectDisconnectIssued = false;
+            Log::warn( "Wi-Fi reconnect requested by cloud recovery" );
+        }
 
         esp_netif_t * getNetif() { return esp_netif_get_handle_from_ifkey( "WIFI_STA_DEF" ); }
 
@@ -68,6 +77,8 @@ namespace AsnPlus::Wifi
         WifiConfig             _bleConnectNetwork {};
         bool                   _bleConnectOverrideActive = false;
         ISta::State            _lastStaStateForLogs      = ISta::State::UNKNOWN;
+        bool                   _reconnectRequested       = false;
+        bool                   _reconnectDisconnectIssued = false;
 
         Sta     _sta;
         Manager _manager;
@@ -157,6 +168,44 @@ namespace AsnPlus::Wifi
                 _savedNetworks[ i ].ssid.assign( "" );
                 _savedNetworks[ i ].password.assign( "" );
             }
+        }
+
+        void _processReconnectRequest()
+        {
+            if ( ! _reconnectRequested ) return;
+
+            if ( ! _reconnectDisconnectIssued &&
+                 _staRuntime.state != ISta::State::DISCONNECTED &&
+                 _staRuntime.state != ISta::State::DISCONNECTING )
+            {
+                Log::warn( "Wi-Fi reconnect recovery: sending DISCONNECT" );
+                _request.command            = Manager::Command::DISCONNECT;
+                _reconnectDisconnectIssued = true;
+                return;
+            }
+
+            SavedNetworkInfo & slot0 = _legacyConfig.saved_networks[ 0 ];
+            slot0.ssid.terminate();
+            slot0.password.terminate();
+
+            if ( slot0.ssid.data[ 0 ] == '\0' )
+            {
+                Log::error( "Wi-Fi reconnect recovery canceled: saved slot 0 SSID is empty" );
+                _reconnectRequested        = false;
+                _reconnectDisconnectIssued = false;
+                return;
+            }
+
+            WifiConfig network {};
+            network.ssid.assign( slot0.ssid.data );
+            network.password.assign( slot0.password.data );
+            network.serialize( _request.commandData );
+
+            _request.command            = Manager::Command::CONNECT;
+            _reconnectRequested        = false;
+            _reconnectDisconnectIssued = false;
+
+            Log::warn( "Wi-Fi reconnect recovery: sending CONNECT to ssid='%s'", slot0.ssid.data );
         }
 
         void _syncStateToLegacy()

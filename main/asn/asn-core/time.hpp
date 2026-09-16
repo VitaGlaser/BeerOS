@@ -73,7 +73,7 @@ namespace AsnPlus
 
         bool isValid() const
         {
-            if ( year < 1970 || year > 9999 ) return false;
+            if ( year <= 1970 || year > 9999 ) return false;
             if ( month < 1 || month > 12 ) return false;
             if ( weekday > 6 ) return false;
             const uint8_t dim = daysInMonth( year, month );

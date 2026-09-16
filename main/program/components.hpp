@@ -151,7 +151,9 @@ namespace AsnPlus
             lteClient,
             requestManager,
             mqttManager,
-            websocketManager
+            websocketManager,
+            systemClock,
+            pcfRtc
         };
 
         // MARK: Peripheral Ports

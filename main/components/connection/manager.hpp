@@ -3,6 +3,7 @@
 #include "program/config.hpp"
 
 #include "asn/asn-core/logger.hpp"
+#include "asn/asn-core/time.hpp"
 #include "asn/asn-core/types.hpp"
 
 #include "asn/asn-esp32-wifi/include/netif.hpp"
@@ -48,7 +49,9 @@ namespace AsnPlus::Connection
             Eg915HttpsClient &       lteClient,
             Cloud::RequestManager &  requestManager,
             Mqtt::Manager &          mqttManager,
-            Websocket::Manager &     websocketManager
+            Websocket::Manager &     websocketManager,
+            ISystemClock &           systemClock,
+            IRtc &                   rtc
         ) :
             _connectionModuleConfig( connectionModuleConfig ),
             _connectionModuleRuntime( connectionModuleRuntime ),
@@ -64,7 +67,9 @@ namespace AsnPlus::Connection
             _lteClient( lteClient ),
             _requestManager( requestManager ),
             _mqttManager( mqttManager ),
-            _websocketManager( websocketManager )
+            _websocketManager( websocketManager ),
+            _systemClock( systemClock ),
+            _rtc( rtc )
         {
         }
 
@@ -131,6 +136,12 @@ namespace AsnPlus::Connection
             if ( ! isNetworkAvailable() ) return;
             _setHttpsClient();
             _requestManager.poll();
+
+            if ( _lastActiveTransport == ActiveTransport::WIFI && _requestManager.consumeWifiReconnectRequest() )
+            {
+                Log::warn( "Cloud request failures reached threshold, triggering Wi-Fi reconnect" );
+                _wifiManager.requestReconnect();
+            }
         }
 
         void mqttPoll()
@@ -189,7 +200,10 @@ namespace AsnPlus::Connection
         Mqtt::Manager &         _mqttManager;
         Websocket::Manager &    _websocketManager;
 
-        Wifi::Sntp _sntpManager { "pool.ntp.org" };
+        ISystemClock & _systemClock;
+        IRtc &         _rtc;
+
+        Wifi::Sntp _sntpManager { "pool.ntp.org", Delegate< void( uint64_t ) >::create< Manager, &Manager::_onNtpSync >( *this ) };
         bool       _networkWasAvailable = false;
 
         enum class ActiveTransport : uint8_t
@@ -202,6 +216,27 @@ namespace AsnPlus::Connection
         ActiveTransport _lastActiveTransport = ActiveTransport::NONE;
 
         bool _lteHttpsTestDone               = false;
+
+        void _onNtpSync( uint64_t epochMs )
+        {
+            Time synchronizedTime {};
+            synchronizedTime.fromEpochMillis( epochMs );
+            if ( ! synchronizedTime.isValid() )
+            {
+                Log::warn( "Ignoring invalid NTP time: epoch=%llu", epochMs );
+                return;
+            }
+
+            _systemClock.setUtc( synchronizedTime );
+            _rtc.setUtc( synchronizedTime );
+            Log::info( "Synchronized system clock and RTC: %u-%02u-%02u %02u:%02u:%02u",
+                       synchronizedTime.year,
+                       synchronizedTime.month,
+                       synchronizedTime.day,
+                       synchronizedTime.hour,
+                       synchronizedTime.minute,
+                       synchronizedTime.second );
+        }
 
         void _btStateConversion()
         {
