@@ -90,9 +90,9 @@ namespace AsnPlus::Cloud
                 return false;
             }
 
-            if ( _responseBuffer.empty() ) return true;
+            Log::warn( "POST /%s OK code %d", _config.moduleUrl, status );
 
-            Log::info( "Request (%s) succeeded with status code %d", _url, status );
+            if ( _responseBuffer.empty() ) return true;
 
             char responseLabel[ 64 ];
             snprintf( responseLabel, sizeof( responseLabel ), "Response [%s]", _config.moduleUrl );

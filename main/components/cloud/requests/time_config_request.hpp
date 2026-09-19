@@ -63,7 +63,7 @@ namespace AsnPlus::Cloud
 
             if ( _responseBuffer.empty() ) return true;
 
-            Log::info( "Request (%s) succeeded with status code %d", _url, status );
+            Log::warn( "GET /%s OK code %d", _config.moduleUrl, status );
 
             char responseLabel[ 64 ];
             snprintf( responseLabel, sizeof( responseLabel ), "Response [%s]", _config.moduleUrl );
@@ -168,7 +168,7 @@ namespace AsnPlus::Cloud
                 return false;
             }
 
-            Log::info( "Request (%s) succeeded with status code %d", _url, status );
+            Log::warn( "POST /%s OK code %d", _config.moduleUrl, status );
             return true;
         }
 

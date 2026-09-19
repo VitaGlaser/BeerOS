@@ -97,6 +97,8 @@ namespace AsnPlus::Cloud
                 return false;
             }
 
+            Log::warn( "POST /%s OK code %d", _config.moduleUrl, status );
+
             if ( _responseBuffer.empty() ) return true;
 
             char responseLabel[ 64 ];

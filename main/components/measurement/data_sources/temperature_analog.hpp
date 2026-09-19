@@ -5,7 +5,7 @@
 #include "asn/asn-core/logger.hpp"
 #include "asn/asn-core/types.hpp"
 
-#include "asn/asn-hal/include/time_manager/time_manager.hpp"
+#include "components/time/application_time_manager.hpp"
 
 #include "base.hpp"
 

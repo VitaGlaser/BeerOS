@@ -394,7 +394,7 @@ namespace AsnPlus
                 if ( index < 0 )
                 {
                     event.type = EventMonitor::Event::EventType::UNKNOWN;
-                    Log::warn(
+                    Log::debug(
                         " (%u) Event volume %u does not match any classification, counting as unrecognized",
                         _index,
                         event.volume

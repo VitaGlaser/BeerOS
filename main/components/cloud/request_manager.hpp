@@ -1,5 +1,7 @@
 #pragma once
 
+#include "build_info.h"
+
 #include <cstring>
 
 #include "freertos/FreeRTOS.h"
@@ -162,6 +164,8 @@ namespace AsnPlus::Cloud
                 return;
             }
 
+            if ( _database.timeRuntime.utcEpochMs < static_cast< uint64_t >( BUILD_TIMESTAMP_MS ) ) return;
+
             if ( _pollTickIntervalMs == 0 ) return;
             if ( ! _timer.isElapsed() ) return;
             _timer.start( _pollTickIntervalMs );
@@ -181,64 +185,108 @@ namespace AsnPlus::Cloud
 
             if ( _onStartup )
             {
-                Log::info( "First poll — uploading local configs for server reconciliation" );
-                if ( ! _timeConfigPostRequest.send() )
-                {
-                    Log::error( "Failed to upload time config" );
-                    return;
-                }
-                if ( ! _deviceConfigPostRequest.send() )
-                {
-                    Log::error( "Failed to upload device config" );
-                    return;
-                }
-                if ( ! _networkConfigPostRequest.send() )
-                {
-                    Log::error( "Failed to upload network config" );
-                    return;
-                }
-                if ( ! _mqttConfigPostRequest.send() )
-                {
-                    Log::error( "Failed to upload mqtt config" );
-                    return;
-                }
-                for ( uint8_t i = 0; i < 4; ++i )
-                {
-                    if ( ! _channelConfigPostRequestPtrs[ i ]->send() )
-                    {
-                        Log::error( "Failed to upload channel config[%u]", i );
-                        return;
-                    }
-                }
+                Log::info( "First poll — resolving configs by timestamp" );
                 _onStartup = false;
             }
 
             if ( _stateResponse.timeConfigTimestamp > _database.timeConfig.timestamp )
+            {
+                Log::warn(
+                    "Config sync /timeConfig: action=GET sent=%llu returned=%llu",
+                    _database.timeConfig.timestamp,
+                    _stateResponse.timeConfigTimestamp
+                );
                 _timeConfigGetRequest.send();
+            }
             else if ( _stateResponse.timeConfigTimestamp < _database.timeConfig.timestamp )
+            {
+                Log::warn(
+                    "Config sync /timeConfig: action=POST sent=%llu returned=%llu",
+                    _database.timeConfig.timestamp,
+                    _stateResponse.timeConfigTimestamp
+                );
                 _timeConfigPostRequest.send();
+            }
 
             if ( _stateResponse.deviceConfigTimestamp > _database.deviceConfig.timestamp )
+            {
+                Log::warn(
+                    "Config sync /deviceConfig: action=GET sent=%llu returned=%llu",
+                    _database.deviceConfig.timestamp,
+                    _stateResponse.deviceConfigTimestamp
+                );
                 _deviceConfigRequest.send();
+            }
             else if ( _stateResponse.deviceConfigTimestamp < _database.deviceConfig.timestamp )
+            {
+                Log::warn(
+                    "Config sync /deviceConfig: action=POST sent=%llu returned=%llu",
+                    _database.deviceConfig.timestamp,
+                    _stateResponse.deviceConfigTimestamp
+                );
                 _deviceConfigPostRequest.send();
+            }
 
             if ( _stateResponse.networkConfigTimestamp > _database.networkConfig.timestamp )
+            {
+                Log::warn(
+                    "Config sync /networkConfig: action=GET sent=%llu returned=%llu",
+                    _database.networkConfig.timestamp,
+                    _stateResponse.networkConfigTimestamp
+                );
                 _networkConfigRequest.send();
+            }
             else if ( _stateResponse.networkConfigTimestamp < _database.networkConfig.timestamp )
+            {
+                Log::warn(
+                    "Config sync /networkConfig: action=POST sent=%llu returned=%llu",
+                    _database.networkConfig.timestamp,
+                    _stateResponse.networkConfigTimestamp
+                );
                 _networkConfigPostRequest.send();
+            }
 
             if ( _stateResponse.mqttConfigTimestamp > _database.mqttConfig.timestamp )
+            {
+                Log::warn(
+                    "Config sync /mqttConfig: action=GET sent=%llu returned=%llu",
+                    _database.mqttConfig.timestamp,
+                    _stateResponse.mqttConfigTimestamp
+                );
                 _mqttConfigGetRequest.send();
+            }
             else if ( _stateResponse.mqttConfigTimestamp < _database.mqttConfig.timestamp )
+            {
+                Log::warn(
+                    "Config sync /mqttConfig: action=POST sent=%llu returned=%llu",
+                    _database.mqttConfig.timestamp,
+                    _stateResponse.mqttConfigTimestamp
+                );
                 _mqttConfigPostRequest.send();
+            }
 
             for ( uint8_t i = 0; i < 4; ++i )
             {
                 if ( _stateResponse.channelConfigTimestamps[ i ] > _database.channelConfigs[ i ].timestamp )
+                {
+                    Log::warn(
+                        "Config sync /channelConfig[%u]: action=GET sent=%llu returned=%llu",
+                        i + 1,
+                        _database.channelConfigs[ i ].timestamp,
+                        _stateResponse.channelConfigTimestamps[ i ]
+                    );
                     _channelConfigRequestPtrs[ i ]->send();
+                }
                 else if ( _stateResponse.channelConfigTimestamps[ i ] < _database.channelConfigs[ i ].timestamp )
+                {
+                    Log::warn(
+                        "Config sync /channelConfig[%u]: action=POST sent=%llu returned=%llu",
+                        i + 1,
+                        _database.channelConfigs[ i ].timestamp,
+                        _stateResponse.channelConfigTimestamps[ i ]
+                    );
                     _channelConfigPostRequestPtrs[ i ]->send();
+                }
                 else
                     Log::debug( "Channel %u config is up to date", i + 1 );
             }

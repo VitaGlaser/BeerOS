@@ -6,7 +6,7 @@
 #include "asn/asn-core/types.hpp"
 
 #include "asn/asn-expander-lib/include/adc/adc.hpp"
-#include "asn/asn-hal/include/time_manager/time_manager.hpp"
+#include "components/time/application_time_manager.hpp"
 
 #include "base.hpp"
 
@@ -36,7 +36,7 @@ namespace AsnPlus::DataSource
             }
 
             const uint32_t rawValue = static_cast< uint32_t >( _channel->getValue() );
-            const uint64_t ts       = TimeManager::instance().getUtcTime().toEpochMillis();
+            const uint64_t ts       = ApplicationTimeManager::instance().getUtcTime().toEpochMillis();
             _writeSample( ts, rawValue );
 
             Log::debug( "Polled analog pressure sensor (ID: %llu): %u (%llu ms)", _id, rawValue, ts );

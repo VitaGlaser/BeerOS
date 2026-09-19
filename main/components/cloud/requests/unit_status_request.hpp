@@ -132,7 +132,7 @@ namespace AsnPlus::Cloud
 
             _parseResponse();
 
-            Log::debug( "Unit status request (%s) succeeded with status code %u", _url, status );
+            Log::warn( "POST /unitStatus OK code %u", status );
             return true;
         }
 

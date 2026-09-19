@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
         "main.cpp"
+        "components/time/application_time_manager.cpp"
     INCLUDE_DIRS
         "."
         "${CMAKE_CURRENT_BINARY_DIR}"

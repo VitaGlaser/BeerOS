@@ -4,7 +4,7 @@
 
 #include "asn/asn-core/logger.hpp"
 
-#include "asn/asn-hal/include/time_manager/time_manager.hpp"
+#include "components/time/application_time_manager.hpp"
 
 #include "asn/asn-expander-lib/include/timer/timer.hpp"
 
@@ -58,7 +58,7 @@ namespace AsnPlus::DataSource
                     }
                 }
             }
-            uint64_t timestamp = TimeManager::instance().getUtcTime().toEpochMillis();
+            uint64_t timestamp = ApplicationTimeManager::instance().getUtcTime().toEpochMillis();
 
             // Last-resort guard: repeated-byte value survived all local retries.
             // Do not rebase baseline on a likely transport glitch, just ignore this sample.

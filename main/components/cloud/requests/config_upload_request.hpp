@@ -91,7 +91,7 @@ namespace AsnPlus::Cloud
                 return false;
             }
 
-            Log::info( "Request (%s) succeeded with status code %d", _url, status );
+            Log::warn( "POST /%s OK code %d", _config.moduleUrl, status );
             return true;
         }
 

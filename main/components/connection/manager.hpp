@@ -2,6 +2,7 @@
 
 #include "program/config.hpp"
 
+#include "asn/asn-core/delegate.hpp"
 #include "asn/asn-core/logger.hpp"
 #include "asn/asn-core/time.hpp"
 #include "asn/asn-core/types.hpp"
@@ -50,8 +51,7 @@ namespace AsnPlus::Connection
             Cloud::RequestManager &  requestManager,
             Mqtt::Manager &          mqttManager,
             Websocket::Manager &     websocketManager,
-            ISystemClock &           systemClock,
-            IRtc &                   rtc
+            Delegate< void( uint64_t ) > onTimeSync
         ) :
             _connectionModuleConfig( connectionModuleConfig ),
             _connectionModuleRuntime( connectionModuleRuntime ),
@@ -68,8 +68,7 @@ namespace AsnPlus::Connection
             _requestManager( requestManager ),
             _mqttManager( mqttManager ),
             _websocketManager( websocketManager ),
-            _systemClock( systemClock ),
-            _rtc( rtc )
+            _onTimeSync( onTimeSync )
         {
         }
 
@@ -200,8 +199,7 @@ namespace AsnPlus::Connection
         Mqtt::Manager &         _mqttManager;
         Websocket::Manager &    _websocketManager;
 
-        ISystemClock & _systemClock;
-        IRtc &         _rtc;
+        Delegate< void( uint64_t ) > _onTimeSync;
 
         Wifi::Sntp _sntpManager { "pool.ntp.org", Delegate< void( uint64_t ) >::create< Manager, &Manager::_onNtpSync >( *this ) };
         bool       _networkWasAvailable = false;
@@ -227,15 +225,7 @@ namespace AsnPlus::Connection
                 return;
             }
 
-            _systemClock.setUtc( synchronizedTime );
-            _rtc.setUtc( synchronizedTime );
-            Log::info( "Synchronized system clock and RTC: %u-%02u-%02u %02u:%02u:%02u",
-                       synchronizedTime.year,
-                       synchronizedTime.month,
-                       synchronizedTime.day,
-                       synchronizedTime.hour,
-                       synchronizedTime.minute,
-                       synchronizedTime.second );
+            if ( _onTimeSync.is_valid() ) _onTimeSync( epochMs );
         }
 
         void _btStateConversion()

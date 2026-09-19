@@ -5,7 +5,7 @@
 #include "asn/asn-core/logger.hpp"
 #include "asn/asn-core/types.hpp"
 
-#include "asn/asn-hal/include/time_manager/time_manager.hpp"
+#include "components/time/application_time_manager.hpp"
 
 #include "asn/asn-esp32-modbus/include/master.hpp"
 
@@ -43,7 +43,7 @@ namespace AsnPlus::DataSource
                 return;
             }
 
-            uint64_t ts  = TimeManager::instance().getUtcTime().toEpochMillis();
+            uint64_t ts  = ApplicationTimeManager::instance().getUtcTime().toEpochMillis();
             uint32_t val = static_cast< uint32_t >( value );
             _writeSample( ts, val );
 

@@ -24,17 +24,23 @@ namespace AsnPlus::Cloud
 
     void fromJson( AsnPlus::TimeConfig & config, cJSON * json )
     {
-        config.timestamp = static_cast< uint64_t >(
-            cJSON_GetNumberValue( cJSON_GetObjectItem( json, TimeConfigJson::TIMESTAMP_TAG ) )
-        );
+        cJSON * timestamp = cJSON_GetObjectItem( json, TimeConfigJson::TIMESTAMP_TAG );
+        if ( timestamp && cJSON_IsNumber( timestamp ) )
+            config.timestamp = static_cast< uint64_t >( cJSON_GetNumberValue( timestamp ) );
 
         cJSON * tz = cJSON_GetObjectItem( json, TimeConfigJson::TIMEZONE_TAG );
         if ( tz && cJSON_IsString( tz ) )
+        {
             strncpy( config.timezone, tz->valuestring, AsnPlus::TimeConfig::TIMEZONE_LENGTH - 1 );
+            config.timezone[ AsnPlus::TimeConfig::TIMEZONE_LENGTH - 1 ] = '\0';
+        }
 
         cJSON * tzName = cJSON_GetObjectItem( json, TimeConfigJson::TIMEZONE_NAME_TAG );
         if ( tzName && cJSON_IsString( tzName ) )
+        {
             strncpy( config.timezoneName, tzName->valuestring, AsnPlus::TimeConfig::TIMEZONE_NAME_LENGTH - 1 );
+            config.timezoneName[ AsnPlus::TimeConfig::TIMEZONE_NAME_LENGTH - 1 ] = '\0';
+        }
     }
 
 }    // namespace AsnPlus::Cloud

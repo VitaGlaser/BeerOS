@@ -6,6 +6,7 @@
 
 #include "esp_crt_bundle.h"
 #include "esp_https_ota.h"
+#include "esp_log.h"
 #include "esp_system.h"
 
 #include "asn/asn-core/logger.hpp"
@@ -52,7 +53,7 @@
 
 #include "asn/asn-esp32-hal/include/peripherals/persistent_storage.hpp"
 
-#include "asn/asn-hal/include/time_manager/time_manager.hpp"
+#include "components/time/application_time_manager.hpp"
 
 #include "database/database.hpp"
 
@@ -77,7 +78,7 @@ namespace AsnPlus
 
         Esp32::SystemClock systemClock {};
 
-        TimeManager timeManager {
+        ApplicationTimeManager timeManager {
             systemClock,
             &pcfRtc,
             persistentStorage,
@@ -152,8 +153,10 @@ namespace AsnPlus
             requestManager,
             mqttManager,
             websocketManager,
-            systemClock,
-            pcfRtc
+            Delegate< void( uint64_t ) >::create<
+                ApplicationTimeManager,
+                &ApplicationTimeManager::onNetworkTimeSync
+            >( timeManager )
         };
 
         // MARK: Peripheral Ports
@@ -260,6 +263,8 @@ namespace AsnPlus
         void initialize()
         {
             Log::info( "Initializing" );
+
+            esp_log_level_set( "esp-x509-crt-bundle", ESP_LOG_WARN );
 
             nvs.initialize();
 
